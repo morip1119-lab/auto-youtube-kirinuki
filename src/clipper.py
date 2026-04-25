@@ -272,39 +272,46 @@ class VideoCutter:
         thumb_path: Path,
         fade_out_start: float,
     ) -> None:
-        """縦動画(9:16)を生成: 上部にメイン映像、下部にサムネイルを配置"""
-        # レイアウト:
-        #   Canvas  : 1080 x 1920
-        #   上部映像: 1080 x 607  (16:9 を幅1080に縮小)  y=0
-        #   下部サムネ: 1080 x 1313 (余白全て)           y=607
-        VIDEO_H = 607        # round(1080 * 9 / 16)  ≈ 607
-        THUMB_Y = VIDEO_H
-        THUMB_H = 1920 - VIDEO_H  # 1313
+        """縦動画(9:16)を生成
+        レイアウト（上から順）:
+          [黒背景 + タイトル文字]  380px  y=0
+          [メイン映像 16:9]        607px  y=380
+          [サムネイル]             933px  y=987
+        """
+        TITLE_H = 380            # 上部タイトルエリアの高さ
+        VIDEO_H = 607            # 1080px幅に縮小した16:9映像の高さ
+        VIDEO_Y = TITLE_H        # 380
+        THUMB_Y = TITLE_H + VIDEO_H   # 987
+        THUMB_H = 1920 - THUMB_Y      # 933
 
-        # filter_complex を組み立て
         fc = []
+
+        # 映像を幅1080に縮小し、1080×1920キャンバスの y=VIDEO_Y に配置（上下は黒）
         fc.append(
             f"[0:v]scale=1080:-2:flags=lanczos,"
-            f"pad=1080:1920:0:0:black,setsar=1[main_v]"
+            f"pad=1080:1920:0:{VIDEO_Y}:black,setsar=1[canvas]"
         )
-        # サムネイルを下部エリア(1080×THUMB_H)にクロップ填充
+
+        # サムネイルを下部エリア(1080×THUMB_H)にフィル（高さ基準でスケール → 幅センタークロップ）
         fc.append(
             f"[1:v]scale=-2:{THUMB_H}:flags=lanczos,"
             f"crop=1080:{THUMB_H}:(iw-1080)/2:0,setsar=1[thumb_v]"
         )
-        fc.append(f"[main_v][thumb_v]overlay=0:{THUMB_Y}[composed]")
 
-        cur = "composed"
+        # サムネイルを下部に合成
+        fc.append(f"[canvas][thumb_v]overlay=0:{THUMB_Y}[with_thumb]")
 
-        # タイトルオーバーレイ: サムネイル上部（y=THUMB_Y+40）
+        cur = "with_thumb"
+
+        # タイトル文字: 上部黒エリア(0〜TITLE_H)の縦中央に白文字
         if title_text:
             safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
+            title_y = f"({TITLE_H}-text_h)/2"
             drawtext = (
                 f"[{cur}]drawtext=text='{safe_text}'"
-                ":fontsize=52:fontcolor=white"
+                ":fontsize=54:fontcolor=white"
                 ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
-                f":x=(w-text_w)/2:y={THUMB_Y + 40}"
-                ":box=1:boxcolor=black@0.7:boxborderw=14"
+                f":x=(w-text_w)/2:y={title_y}"
                 "[titled]"
             )
             fc.append(drawtext)
