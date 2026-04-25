@@ -394,8 +394,32 @@
       color: var(--text-muted);
       font-size: 13px;
       overflow: hidden;
+      position: relative;
     }
-    .video-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .video-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-preview .preview-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .video-preview .preview-placeholder svg {
+      opacity: 0.3;
+    }
+    .video-preview .play-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .video-preview:hover .play-overlay { opacity: 1; }
+    .video-preview .play-overlay svg { filter: drop-shadow(0 2px 8px rgba(0,0,0,.8)); }
     .video-meta-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--border); }
     .video-meta-item:last-child { border-bottom: none; }
     .video-meta-item .k { font-size: 11px; color: var(--text-muted); }
@@ -717,7 +741,14 @@
   <div class="right-panel">
     <div class="right-title">動画プレビュー</div>
     <div class="video-preview" id="video-preview">
-      <span>URLを入力してください</span>
+      <div class="preview-placeholder" id="preview-placeholder">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+          <path d="M10 9l6 3-6 3V9z" fill="currentColor" stroke="none" opacity="0.4"/>
+        </svg>
+        <span>URLを入力してください</span>
+      </div>
     </div>
     <div id="video-meta" style="display:none;">
       <div class="video-meta-item"><div class="k">タイトル</div><div class="v" id="vt-title">-</div></div>
@@ -868,11 +899,87 @@ function updateSummary() {
 document.getElementById('whisper-model')?.addEventListener('change', updateSummary);
 
 /* ───────────────────────────────────────────────────────
+   YouTubeビデオID抽出 & サムネイル即時表示
+─────────────────────────────────────────────────────── */
+function extractYouTubeId(url) {
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /shorts\/([a-zA-Z0-9_-]{11})/,
+    /embed\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function setThumbnail(videoId) {
+  const preview = document.getElementById('video-preview');
+  const placeholder = document.getElementById('preview-placeholder');
+  // maxresdefault → hqdefault フォールバック
+  const img = new Image();
+  img.onload = () => {
+    preview.innerHTML = `
+      <img src="${img.src}" alt="サムネイル">
+      <div class="play-overlay">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="white">
+          <circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.6)"/>
+          <path d="M10 8l6 4-6 4V8z"/>
+        </svg>
+      </div>
+    `;
+  };
+  img.onerror = () => {
+    img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    img.onerror = () => {
+      if (placeholder) placeholder.style.display = '';
+    };
+    preview.innerHTML = `
+      <img src="${img.src}" alt="サムネイル">
+      <div class="play-overlay">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="white">
+          <circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.6)"/>
+          <path d="M10 8l6 4-6 4V8z"/>
+        </svg>
+      </div>
+    `;
+  };
+  img.src = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+}
+
+// URLが変わるたびにサムネイルを即時表示
+document.getElementById('url-input').addEventListener('input', () => {
+  const url = document.getElementById('url-input').value.trim();
+  const videoId = extractYouTubeId(url);
+  if (videoId) {
+    setThumbnail(videoId);
+  } else {
+    document.getElementById('video-preview').innerHTML = `
+      <div class="preview-placeholder" id="preview-placeholder">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+          <path d="M10 9l6 3-6 3V9z" fill="currentColor" stroke="none" opacity="0.4"/>
+        </svg>
+        <span>URLを入力してください</span>
+      </div>`;
+    document.getElementById('video-meta').style.display = 'none';
+  }
+});
+
+/* ───────────────────────────────────────────────────────
    動画情報取得
 ─────────────────────────────────────────────────────── */
 async function fetchVideoInfo() {
   const url = document.getElementById('url-input').value.trim();
   if (!url) return alert('URLを入力してください');
+
+  // サムネイルを先に即時表示
+  const videoId = extractYouTubeId(url);
+  if (videoId) setThumbnail(videoId);
+
   try {
     const res = await fetch(`/api/video-info?url=${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error((await res.json()).detail);
@@ -882,8 +989,18 @@ async function fetchVideoInfo() {
     const m = Math.floor(info.duration / 60), s = info.duration % 60;
     document.getElementById('vt-duration').textContent = `${m}分${s}秒`;
     document.getElementById('video-meta').style.display = '';
+    // APIから取得したサムネイルがあればそちらを優先
     if (info.thumbnail) {
-      document.getElementById('video-preview').innerHTML = `<img src="${info.thumbnail}" alt="">`;
+      const preview = document.getElementById('video-preview');
+      preview.innerHTML = `
+        <img src="${info.thumbnail}" alt="サムネイル">
+        <div class="play-overlay">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="white">
+            <circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.6)"/>
+            <path d="M10 8l6 4-6 4V8z"/>
+          </svg>
+        </div>
+      `;
     }
     document.getElementById('submit-hint').textContent = `「${info.title}」の切り抜きを開始できます`;
   } catch (e) {
@@ -891,7 +1008,7 @@ async function fetchVideoInfo() {
   }
 }
 
-// URLが入力されたら自動フェッチ
+// フォーカスが外れたら詳細情報も取得
 document.getElementById('url-input').addEventListener('blur', () => {
   if (document.getElementById('url-input').value.trim()) fetchVideoInfo();
 });
