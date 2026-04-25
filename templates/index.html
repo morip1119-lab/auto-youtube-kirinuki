@@ -764,15 +764,25 @@
               <input type="date" id="batch-date-to" class="date-input">
             </div>
           </div>
-          <div class="form-group" style="margin-top:14px;">
-            <label>最大取得件数</label>
-            <div class="slider-row">
-              <input type="range" id="batch-max-videos" min="1" max="100" value="20" step="1"
-                oninput="document.getElementById('batch-max-val').textContent=this.value+'本'">
-              <span class="slider-val" id="batch-max-val">20本</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label>最大取得件数</label>
+              <div class="slider-row">
+                <input type="range" id="batch-max-videos" min="1" max="100" value="20" step="1"
+                  oninput="document.getElementById('batch-max-val').textContent=this.value+'本'">
+                <span class="slider-val" id="batch-max-val">20本</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label>取得順・処理順</label>
+              <select id="batch-sort-order" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 12px;font-size:14px;font-family:inherit;width:100%;">
+                <option value="newest">新しい順（日付降順）</option>
+                <option value="oldest">古い順（日付昇順）</option>
+                <option value="views">再生数の多い順</option>
+              </select>
             </div>
           </div>
-          <button class="btn btn-outline" onclick="fetchChannelVideos()" id="batch-fetch-btn">
+          <button class="btn btn-outline" style="margin-top:14px;" onclick="fetchChannelVideos()" id="batch-fetch-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             動画リストを取得
           </button>
@@ -875,19 +885,19 @@
             </div>
             <div id="batch-schedule-section" style="display:none;margin-top:12px;">
               <div class="form-group">
-                <label>最初の公開日時</label>
-                <input type="datetime-local" id="batch-schedule-at" class="date-input">
+                <label>投稿開始日</label>
+                <input type="date" id="batch-schedule-date" class="date-input">
               </div>
               <div class="form-group">
-                <label>動画間の公開間隔</label>
-                <div class="slider-row">
-                  <input type="range" id="batch-schedule-interval" min="1" max="72" value="24" step="1"
-                    oninput="document.getElementById('batch-interval-val').textContent=this.value+'時間ごと'">
-                  <span class="slider-val" id="batch-interval-val">24時間ごと</span>
+                <label>1日あたりの投稿回数</label>
+                <div class="seg-ctrl">
+                  <button class="active" id="batch-freq-1" onclick="setBatchFreq(1)">1回/日<br><small style="font-weight:400;opacity:.8;">12:00</small></button>
+                  <button id="batch-freq-2" onclick="setBatchFreq(2)">2回/日<br><small style="font-weight:400;opacity:.8;">12:00 / 18:00</small></button>
+                  <button id="batch-freq-3" onclick="setBatchFreq(3)">3回/日<br><small style="font-weight:400;opacity:.8;">12:00 / 15:00 / 18:00</small></button>
                 </div>
               </div>
-              <div class="alert alert-info" style="font-size:12px;">
-                切り抜き動画が全部で10本なら、設定間隔ごとに順番に自動公開されます
+              <div class="alert alert-info" id="batch-schedule-preview" style="font-size:12px;">
+                投稿開始日から毎日12:00に1本ずつ自動公開されます
               </div>
             </div>
           </div>
@@ -1475,6 +1485,7 @@ async function loadHistory() {
 const batchState = {
   outputFormat: 'horizontal',
   privacy: 'private',
+  postsPerDay: 1,
   fetchedVideos: [],
   currentBatchJobId: null,
   ws: null,
@@ -1504,6 +1515,19 @@ function toggleBatchSchedule() {
   document.getElementById('batch-schedule-section').style.display = enabled ? '' : 'none';
 }
 
+function setBatchFreq(n) {
+  batchState.postsPerDay = n;
+  [1, 2, 3].forEach(i => {
+    document.getElementById(`batch-freq-${i}`)?.classList.toggle('active', i === n);
+  });
+  const labels = {
+    1: '投稿開始日から毎日 12:00 に1本ずつ自動公開されます',
+    2: '投稿開始日から毎日 12:00 と 18:00 の2回自動公開されます',
+    3: '投稿開始日から毎日 12:00・15:00・18:00 の3回自動公開されます',
+  };
+  document.getElementById('batch-schedule-preview').textContent = labels[n];
+}
+
 function batchSelectAll(checked) {
   document.querySelectorAll('.batch-video-checkbox').forEach(cb => { cb.checked = checked; });
 }
@@ -1527,7 +1551,16 @@ async function fetchChannelVideos() {
 
     const res = await fetch(apiUrl);
     if (!res.ok) throw new Error((await res.json()).detail);
-    const videos = await res.json();
+    let videos = await res.json();
+    // ソート適用
+    const sortOrder = document.getElementById('batch-sort-order').value;
+    if (sortOrder === 'newest') {
+      videos.sort((a, b) => (b.upload_date || '').localeCompare(a.upload_date || ''));
+    } else if (sortOrder === 'oldest') {
+      videos.sort((a, b) => (a.upload_date || '').localeCompare(b.upload_date || ''));
+    } else if (sortOrder === 'views') {
+      videos.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+    }
     batchState.fetchedVideos = videos;
     renderBatchVideoList(videos);
   } catch (e) {
@@ -1596,9 +1629,10 @@ async function startBatchJob() {
     return;
   }
 
+  // 選択順（ソート済み）のまま送信
   const doUpload = document.getElementById('batch-do-upload').checked;
-  const scheduleAt = document.getElementById('batch-use-schedule').checked
-    ? document.getElementById('batch-schedule-at').value : null;
+  const useSchedule = document.getElementById('batch-use-schedule').checked;
+  const scheduleDate = useSchedule ? document.getElementById('batch-schedule-date').value : null;
 
   const body = {
     channel_url: channelUrl,
@@ -1616,8 +1650,8 @@ async function startBatchJob() {
     device: 'cpu',
     do_upload: doUpload,
     privacy: batchState.privacy,
-    schedule_at: scheduleAt,
-    schedule_interval: +document.getElementById('batch-schedule-interval').value,
+    schedule_date: scheduleDate,
+    posts_per_day: batchState.postsPerDay,
   };
 
   const btn = document.getElementById('batch-start-btn');

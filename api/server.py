@@ -179,8 +179,8 @@ class BatchJobCreateRequest(BaseModel):
     # アップロード設定
     do_upload: bool = False
     privacy: str = "private"
-    schedule_at: Optional[str] = None
-    schedule_interval: int = 24
+    schedule_date: Optional[str] = None   # 投稿開始日 YYYY-MM-DD
+    posts_per_day: int = 1                # 1日あたりの投稿回数 (1/2/3)
 
 
 @app.post("/api/batch-jobs")

@@ -43,15 +43,15 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
     show_title = settings.get("show_title", True)
     privacy = settings.get("privacy", "private")
     do_upload = settings.get("do_upload", False)
-    schedule_str = settings.get("schedule_at", None)
-    schedule_interval = int(settings.get("schedule_interval", 24))
+    schedule_date = settings.get("schedule_date", None)
+    posts_per_day = int(settings.get("posts_per_day", 1))
 
     total = len(batch_job.videos)
-    # スケジュール開始時刻（全動画分まとめて生成）
-    scheduled_times: Optional[list] = _resolve_schedule(
-        schedule_str,
+    # 固定時刻スロットでスケジュールを生成
+    scheduled_times: Optional[list] = _resolve_schedule_fixed(
+        schedule_date,
         total * clips_count,
-        schedule_interval,
+        posts_per_day,
     )
     schedule_cursor = 0
 
@@ -293,19 +293,39 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
         print(traceback.format_exc())
 
 
-def _resolve_schedule(
-    schedule_str: Optional[str],
+# 1日あたりの投稿時刻（JST固定）
+DAILY_SLOTS = {
+    1: [12],
+    2: [12, 18],
+    3: [12, 15, 18],
+}
+
+
+def _resolve_schedule_fixed(
+    start_date: Optional[str],
     count: int,
-    interval_hours: int,
+    posts_per_day: int,
 ) -> Optional[list]:
-    if not schedule_str:
+    """投稿開始日と1日あたり投稿回数から固定時刻スケジュールを生成する"""
+    if not start_date:
         return None
     try:
-        first = dateutil_parser.parse(schedule_str)
-        if first.tzinfo is None:
-            first = first.replace(tzinfo=JST)
-        utc = first.astimezone(timezone.utc)
-        return [utc + timedelta(hours=i * interval_hours) for i in range(count)]
+        from datetime import date as date_cls
+        hours = DAILY_SLOTS.get(posts_per_day, [12])
+        base = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=JST)
+        result = []
+        day_offset = 0
+        slot_idx = 0
+        while len(result) < count:
+            dt = (base + timedelta(days=day_offset)).replace(
+                hour=hours[slot_idx], minute=0, second=0, microsecond=0
+            )
+            result.append(dt.astimezone(timezone.utc))
+            slot_idx += 1
+            if slot_idx >= len(hours):
+                slot_idx = 0
+                day_offset += 1
+        return result
     except Exception:
         return None
 
