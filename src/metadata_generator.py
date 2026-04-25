@@ -26,6 +26,7 @@ class VideoMetadata:
     title: str
     description: str
     tags: list[str] = field(default_factory=list)
+    hashtags: list[str] = field(default_factory=list)  # 概要欄末尾に追加するハッシュタグ
     category_id: str = "22"
     language: str = "ja"
     # 元動画情報（概要欄に記載する引用情報）
@@ -50,6 +51,14 @@ class VideoMetadata:
         if footer:
             parts.append(footer)
 
+        # ハッシュタグを末尾に追加（# が付いていなければ付与）
+        if self.hashtags:
+            ht_line = " ".join(
+                h if h.startswith("#") else f"#{h}"
+                for h in self.hashtags[:3]
+            )
+            parts.append(f"\n{ht_line}")
+
         return "\n".join(parts)
 
 
@@ -59,8 +68,8 @@ class MetadataGenerator:
     def __init__(
         self,
         openai_api_key: str,
-        model: str = METADATA_MODEL_DEFAULT,  # デフォルトをminiに変更
-        max_tags: int = 15,
+        model: str = METADATA_MODEL_DEFAULT,
+        max_tags: int = 25,
         description_footer: str = "",
     ):
         self.client = OpenAI(api_key=openai_api_key)
@@ -93,13 +102,14 @@ class MetadataGenerator:
                 clip_text = clip_text[:3000] + "..."
 
         system_prompt = """あなたはYouTube切り抜き動画の専門マーケターです。
-視聴回数を最大化するために、魅力的なタイトル・概要欄・タグを生成してください。
+視聴回数を最大化するために、魅力的なタイトル・概要欄・タグ・ハッシュタグを生成してください。
 
 必ず以下のJSON形式で回答してください（他のテキストは不要）：
 {
   "title": "タイトル（50文字以内、クリックしたくなる魅力的なもの）",
-  "description": "概要欄（300〜500文字程度、内容紹介・見どころ・タイムスタンプなど）",
-  "tags": ["タグ1", "タグ2", ..., "タグ15"]
+  "description": "概要欄（200〜400文字程度、内容紹介・見どころを記載。タイムスタンプは不要）",
+  "tags": ["タグ1", "タグ2", ..., "タグ25"],
+  "hashtags": ["ハッシュタグ1", "ハッシュタグ2", "ハッシュタグ3"]
 }"""
 
         user_prompt = f"""以下の切り抜き動画のメタデータを生成してください。
@@ -117,8 +127,9 @@ class MetadataGenerator:
 
 【要件】
 - タイトルは視聴者の好奇心を刺激するもの（「〇〇した結果...」「〇〇の真相」等の形式も可）
-- 概要欄には内容の見どころを具体的に記載
-- タグは検索されやすいワードを含める
+- 概要欄には内容の見どころを具体的に記載（タイムスタンプは不要）
+- タグは検索されやすいワードを20〜25個含める（一般的なワードから具体的なワードまで幅広く）
+- ハッシュタグは動画内容に最も関連する3つを選ぶ（# は付けずに単語のみ）
 - すべて日本語で作成"""
 
         try:
@@ -135,11 +146,13 @@ class MetadataGenerator:
             result = json.loads(response.choices[0].message.content)
 
             tags = result.get("tags", [])[:self.max_tags]
+            hashtags = result.get("hashtags", [])[:3]
 
             metadata = VideoMetadata(
                 title=result.get("title", candidate.suggested_title)[:100],
                 description=result.get("description", ""),
                 tags=tags,
+                hashtags=hashtags,
                 source_video_title=source_video_title,
                 source_channel_name=source_channel_name,
                 source_video_url=source_video_url,
