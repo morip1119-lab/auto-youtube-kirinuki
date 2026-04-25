@@ -171,61 +171,68 @@ class VideoCutter:
         fade_out_start = max(0, duration - self.fade_duration)
         is_vertical = self.aspect_ratio == "9:16"
 
-        # ビデオフィルター構築
+        if is_vertical:
+            # 縦動画: サムネイル下部貼り付けを試みる
+            thumb_temp = output_path.with_name(output_path.stem + "_vthumb.jpg")
+            has_thumb = self._extract_frame(
+                video_path, start + min(2.0, duration / 2), thumb_temp
+            )
+            if has_thumb:
+                try:
+                    self._run_ffmpeg_vertical_with_thumb(
+                        video_path, start, duration, output_path,
+                        title_text, thumb_temp, fade_out_start,
+                    )
+                    return
+                except Exception:
+                    pass  # サムネイル失敗時はフォールバック
+                finally:
+                    try:
+                        thumb_temp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+        # ─── 通常の vf ベース処理 ─────────────────────────────────────
         vf_parts = []
 
         if is_vertical:
-            # 横動画を縦(9:16)にリフレーム
-            # step1: 幅1080に縮小（高さは自動・偶数保証）
-            # step2: 1080x1920にパディング（上下に黒帯）
-            # step3: setsar=1でアスペクト比メタデータを確定
             vf_parts.append(
                 "scale=1080:-2:flags=lanczos,"
                 "pad=1080:1920:0:(1920-ih)/2:black,"
                 "setsar=1"
             )
         else:
-            # 横動画: 1920x1080に揃える
             vf_parts.append(
                 "scale=1920:-2:flags=lanczos,"
                 "pad=1920:1080:(1920-iw)/2:0:black,"
                 "setsar=1"
             )
 
-        # タイトルオーバーレイ (drawtext)
         if title_text:
             safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
             if is_vertical:
-                # 縦動画: 上部から1/8の位置（約240px）に表示
                 drawtext = (
                     f"drawtext=text='{safe_text}'"
-                    ":fontsize=52"
-                    ":fontcolor=white"
+                    ":fontsize=52:fontcolor=white"
                     ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
-                    ":x=(w-text_w)/2"
-                    ":y=h/8"
+                    ":x=(w-text_w)/2:y=h/8"
                     ":box=1:boxcolor=black@0.6:boxborderw=12"
                 )
             else:
-                # 横動画: 下部中央に表示
                 drawtext = (
                     f"drawtext=text='{safe_text}'"
-                    ":fontsize=44"
-                    ":fontcolor=white"
+                    ":fontsize=44:fontcolor=white"
                     ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
-                    ":x=(w-text_w)/2"
-                    ":y=h-text_h-40"
+                    ":x=(w-text_w)/2:y=h-text_h-40"
                     ":box=1:boxcolor=black@0.6:boxborderw=10"
                 )
             vf_parts.append(drawtext)
 
-        # フェードイン/アウト
         if self.fade_duration > 0:
             vf_parts.append(f"fade=t=in:st=0:d={self.fade_duration}")
             if fade_out_start > 0:
                 vf_parts.append(f"fade=t=out:st={fade_out_start:.2f}:d={self.fade_duration}")
 
-        # 音声フィルター
         af_parts = []
         if self.fade_duration > 0:
             af_parts.append(f"afade=t=in:st=0:d={self.fade_duration}")
@@ -238,32 +245,127 @@ class VideoCutter:
             "-i", str(video_path),
             "-t", str(duration),
         ]
-
         if vf_parts:
             cmd += ["-vf", ",".join(vf_parts)]
         if af_parts:
             cmd += ["-af", ",".join(af_parts)]
-
         cmd += [
-            "-c:v", self.video_codec,
-            "-crf", str(self.video_crf),
+            "-c:v", self.video_codec, "-crf", str(self.video_crf),
             "-preset", "fast",
-            "-c:a", self.audio_codec,
-            "-b:a", self.audio_bitrate,
+            "-c:a", self.audio_codec, "-b:a", self.audio_bitrate,
             "-movflags", "+faststart",
             str(output_path),
         ]
-
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
-
         if result.returncode != 0:
             raise RuntimeError(f"ffmpegエラー:\n{result.stderr[-2000:]}")
+
+    def _run_ffmpeg_vertical_with_thumb(
+        self,
+        video_path: Path,
+        start: float,
+        duration: float,
+        output_path: Path,
+        title_text: str,
+        thumb_path: Path,
+        fade_out_start: float,
+    ) -> None:
+        """縦動画(9:16)を生成: 上部にメイン映像、下部にサムネイルを配置"""
+        # レイアウト:
+        #   Canvas  : 1080 x 1920
+        #   上部映像: 1080 x 607  (16:9 を幅1080に縮小)  y=0
+        #   下部サムネ: 1080 x 1313 (余白全て)           y=607
+        VIDEO_H = 607        # round(1080 * 9 / 16)  ≈ 607
+        THUMB_Y = VIDEO_H
+        THUMB_H = 1920 - VIDEO_H  # 1313
+
+        # filter_complex を組み立て
+        fc = []
+        fc.append(
+            f"[0:v]scale=1080:-2:flags=lanczos,"
+            f"pad=1080:1920:0:0:black,setsar=1[main_v]"
+        )
+        # サムネイルを下部エリア(1080×THUMB_H)にクロップ填充
+        fc.append(
+            f"[1:v]scale=-2:{THUMB_H}:flags=lanczos,"
+            f"crop=1080:{THUMB_H}:(iw-1080)/2:0,setsar=1[thumb_v]"
+        )
+        fc.append(f"[main_v][thumb_v]overlay=0:{THUMB_Y}[composed]")
+
+        cur = "composed"
+
+        # タイトルオーバーレイ: サムネイル上部（y=THUMB_Y+40）
+        if title_text:
+            safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
+            drawtext = (
+                f"[{cur}]drawtext=text='{safe_text}'"
+                ":fontsize=52:fontcolor=white"
+                ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
+                f":x=(w-text_w)/2:y={THUMB_Y + 40}"
+                ":box=1:boxcolor=black@0.7:boxborderw=14"
+                "[titled]"
+            )
+            fc.append(drawtext)
+            cur = "titled"
+
+        # フェードイン/アウト
+        if self.fade_duration > 0:
+            fc.append(f"[{cur}]fade=t=in:st=0:d={self.fade_duration}[fin]")
+            cur = "fin"
+            if fade_out_start > 0:
+                fc.append(
+                    f"[{cur}]fade=t=out:st={fade_out_start:.2f}:d={self.fade_duration}[fout]"
+                )
+                cur = "fout"
+
+        af_parts = []
+        if self.fade_duration > 0:
+            af_parts.append(f"afade=t=in:st=0:d={self.fade_duration}")
+            if fade_out_start > 0:
+                af_parts.append(
+                    f"afade=t=out:st={fade_out_start:.2f}:d={self.fade_duration}"
+                )
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(start), "-t", str(duration), "-i", str(video_path),
+            "-loop", "1", "-i", str(thumb_path),
+            "-filter_complex", ";".join(fc),
+            "-map", f"[{cur}]",
+            "-map", "0:a",
+        ]
+        if af_parts:
+            cmd += ["-af", ",".join(af_parts)]
+        cmd += [
+            "-t", str(duration),
+            "-c:v", self.video_codec, "-crf", str(self.video_crf),
+            "-preset", "fast",
+            "-c:a", self.audio_codec, "-b:a", self.audio_bitrate,
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpegエラー(縦+サムネイル):\n{result.stderr[-2000:]}")
+
+    def _extract_frame(self, video_path: Path, seek: float, output_path: Path) -> bool:
+        """ソース動画から指定時刻の1フレームをJPEGとして抽出する。成功したら True を返す"""
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(max(0, seek)),
+            "-i", str(video_path),
+            "-vframes", "1",
+            "-q:v", "2",
+            str(output_path),
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, encoding="utf-8", errors="replace",
+        )
+        return result.returncode == 0 and output_path.exists()
 
     def _extract_thumbnail(
         self, video_path: Path, candidate: ClipCandidate

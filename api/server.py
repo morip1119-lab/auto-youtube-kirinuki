@@ -262,6 +262,23 @@ async def batch_job_progress_ws(websocket: WebSocket, job_id: str):
             pass
 
 
+@app.delete("/api/youtube/token")
+async def delete_youtube_token():
+    """YouTube認証トークンを削除して再認証を促す"""
+    token_path = Path(os.environ.get("YOUTUBE_TOKEN_FILE", "youtube_token.pickle"))
+    if token_path.exists():
+        token_path.unlink()
+        return {"message": "認証トークンを削除しました。次のアップロード時に再認証が必要です。"}
+    return {"message": "トークンは既に未認証状態です。"}
+
+
+@app.get("/api/youtube/token-status")
+async def get_youtube_token_status():
+    """YouTube認証済みかどうかを返す"""
+    token_path = Path(os.environ.get("YOUTUBE_TOKEN_FILE", "youtube_token.pickle"))
+    return {"authenticated": token_path.exists()}
+
+
 @app.get("/api/settings")
 async def get_settings():
     """現在の環境設定を返す（APIキー有無など）"""

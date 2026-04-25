@@ -658,6 +658,13 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div class="toggle-row" style="margin-bottom:14px;">
+          <div>
+            <div>YouTubeアカウント</div>
+            <div class="sub" id="auth-status-label">認証状態を確認中...</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="reauth()" id="reauth-btn">再認証</button>
+        </div>
 
         <div class="upload-section" id="upload-section">
           <div class="form-group">
@@ -869,6 +876,13 @@
           <div class="toggle-row" style="margin-bottom:14px;">
             <div><div>自動アップロード</div><div class="sub">切り抜き完了後にYouTubeへ投稿</div></div>
             <label class="toggle"><input type="checkbox" id="batch-do-upload" onchange="toggleBatchUploadSection()"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px;">
+            <div>
+              <div>YouTubeアカウント</div>
+              <div class="sub" id="batch-auth-status-label">認証状態を確認中...</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="reauth()">再認証</button>
           </div>
           <div id="batch-upload-section" class="upload-section">
             <div class="form-group">
@@ -1794,9 +1808,43 @@ function showBatchResults(job) {
 }
 
 /* ───────────────────────────────────────────────────────
+   YouTube 再認証
+─────────────────────────────────────────────────────── */
+async function checkAuthStatus() {
+  try {
+    const res = await fetch('/api/youtube/token-status');
+    const data = await res.json();
+    const label = data.authenticated
+      ? '認証済み — 別チャンネルに切り替える場合は再認証'
+      : '未認証 — アップロード時に自動でログイン画面が開きます';
+    ['auth-status-label', 'batch-auth-status-label'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = label;
+    });
+  } catch (_) {}
+}
+
+async function reauth() {
+  if (!confirm('YouTube認証をリセットします。\n次のアップロード時にGoogleアカウント選択画面が開きます。\nよろしいですか？')) return;
+  const btn = document.getElementById('reauth-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+  try {
+    const res = await fetch('/api/youtube/token', { method: 'DELETE' });
+    const data = await res.json();
+    alert(data.message);
+    await checkAuthStatus();
+  } catch (e) {
+    alert('エラーが発生しました: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '再認証'; }
+  }
+}
+
+/* ───────────────────────────────────────────────────────
    初期化
 ─────────────────────────────────────────────────────── */
 updateSummary();
+checkAuthStatus();
 </script>
 </body>
 </html>
