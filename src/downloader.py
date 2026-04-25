@@ -150,6 +150,71 @@ class YouTubeDownloader:
             print()
             console.print("[green]  ダウンロード完了[/green]")
 
+    def get_channel_videos(
+        self,
+        channel_url: str,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        max_videos: int = 50,
+    ) -> list[VideoInfo]:
+        """チャンネルの動画リストを取得（期間フィルター付き）
+
+        Args:
+            channel_url: チャンネルURL または @handle
+            date_from: 開始日 YYYY-MM-DD 形式（この日以降）
+            date_to: 終了日 YYYY-MM-DD 形式（この日以前）
+            max_videos: 最大取得件数
+        """
+        # YYYY-MM-DD → YYYYMMDD 変換
+        def to_ydl_date(d: str) -> str:
+            return d.replace("-", "") if d else ""
+
+        date_from_ydl = to_ydl_date(date_from or "")
+        date_to_ydl = to_ydl_date(date_to or "")
+
+        ydl_opts: dict = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "playlistend": max_videos,
+        }
+        if date_from_ydl or date_to_ydl:
+            try:
+                date_range = yt_dlp.utils.DateRange(
+                    date_from_ydl or None,
+                    date_to_ydl or None,
+                )
+                ydl_opts["daterange"] = date_range
+            except Exception:
+                pass
+
+        videos: list[VideoInfo] = []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(channel_url, download=False)
+            entries = info.get("entries", []) if info else []
+            for entry in entries:
+                if not entry:
+                    continue
+                upload_date = entry.get("upload_date", "")
+                # 日付フィルターを手動でも適用（daterangeが効かない場合の保険）
+                if date_from_ydl and upload_date and upload_date < date_from_ydl:
+                    continue
+                if date_to_ydl and upload_date and upload_date > date_to_ydl:
+                    continue
+                videos.append(VideoInfo(
+                    video_id=entry.get("id", ""),
+                    title=entry.get("title", ""),
+                    description=entry.get("description", ""),
+                    duration=entry.get("duration", 0) or 0,
+                    channel_title=info.get("channel", info.get("uploader", "")),
+                    channel_id=info.get("channel_id", ""),
+                    upload_date=upload_date,
+                    view_count=entry.get("view_count", 0) or 0,
+                    tags=[],
+                    thumbnail_url=entry.get("thumbnail", f"https://img.youtube.com/vi/{entry.get('id','')}/hqdefault.jpg"),
+                ))
+        return videos
+
     def save_video_info(self, info: VideoInfo, output_path: Path) -> None:
         """VideoInfoをJSONファイルとして保存"""
         data = {

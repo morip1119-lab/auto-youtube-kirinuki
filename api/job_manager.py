@@ -68,6 +68,46 @@ class ClipOutput:
 
 
 @dataclass
+class BatchVideoItem:
+    """バッチ処理内の1動画の状態"""
+    index: int
+    url: str
+    video_id: str = ""
+    title: str = ""
+    thumbnail: str = ""
+    upload_date: str = ""
+    duration: int = 0
+    status: str = "pending"   # pending / running / completed / failed / skipped
+    clips_count: int = 0
+    error: str = ""
+
+
+@dataclass
+class BatchJob:
+    """チャンネル一括処理ジョブ"""
+    id: str
+    channel_url: str
+    videos: list[BatchVideoItem]
+    settings: dict
+    status: JobStatus = JobStatus.PENDING
+    progress: int = 0
+    message: str = ""
+    error: str = ""
+    current_video_index: int = 0
+    total_clips: int = 0
+    all_clips: list[ClipOutput] = field(default_factory=list)
+    logs: list[str] = field(default_factory=list)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["status"] = self.status.value
+        return d
+
+
+@dataclass
 class Job:
     """ジョブの状態を保持するデータクラス"""
     id: str
@@ -98,8 +138,10 @@ class JobManager:
 
     def __init__(self):
         self._jobs: dict[str, Job] = {}
-        # WebSocket接続リスト (job_id -> set of queues)
+        self._batch_jobs: dict[str, BatchJob] = {}
         self._subscribers: dict[str, set] = defaultdict(set)
+
+    # ── 単体ジョブ ───────────────────────────────────────────────────────
 
     def create_job(self, url: str, settings: dict) -> Job:
         job_id = str(uuid.uuid4())
@@ -112,6 +154,70 @@ class JobManager:
 
     def get_all_jobs(self) -> list[Job]:
         return list(reversed(list(self._jobs.values())))
+
+    # ── バッチジョブ ─────────────────────────────────────────────────────
+
+    def create_batch_job(
+        self,
+        channel_url: str,
+        videos: list[BatchVideoItem],
+        settings: dict,
+    ) -> BatchJob:
+        job_id = str(uuid.uuid4())
+        job = BatchJob(
+            id=job_id,
+            channel_url=channel_url,
+            videos=videos,
+            settings=settings,
+        )
+        self._batch_jobs[job_id] = job
+        return job
+
+    def get_batch_job(self, job_id: str) -> Optional[BatchJob]:
+        return self._batch_jobs.get(job_id)
+
+    def get_all_batch_jobs(self) -> list[BatchJob]:
+        return list(reversed(list(self._batch_jobs.values())))
+
+    async def update_batch(
+        self,
+        job: BatchJob,
+        status: Optional[JobStatus] = None,
+        progress: Optional[int] = None,
+        message: str = "",
+        error: str = "",
+        **kwargs,
+    ) -> None:
+        if status:
+            job.status = status
+            if status == JobStatus.RUNNING and not job.started_at:
+                job.started_at = datetime.now().isoformat()
+            elif status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+                job.completed_at = datetime.now().isoformat()
+        if progress is not None:
+            job.progress = min(progress, 100)
+        if message:
+            job.message = message
+            job.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        if error:
+            job.error = error
+        for key, value in kwargs.items():
+            if hasattr(job, key):
+                setattr(job, key, value)
+        await self._notify_batch(job)
+
+    async def _notify_batch(self, job: BatchJob) -> None:
+        payload = json.dumps(job.to_dict(), ensure_ascii=False)
+        dead_queues = set()
+        for q in self._subscribers.get(job.id, set()):
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                dead_queues.add(q)
+        for q in dead_queues:
+            self._subscribers[job.id].discard(q)
+
+    # ── 共通 WebSocket ────────────────────────────────────────────────────
 
     def subscribe(self, job_id: str) -> asyncio.Queue:
         """WebSocket用の通知キューを登録"""

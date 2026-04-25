@@ -493,6 +493,7 @@
   </div>
   <nav>
     <a href="#" class="active" id="nav-main" onclick="showPage('main')">切り抜き作成</a>
+    <a href="#" id="nav-batch" onclick="showPage('batch')">チャンネル一括処理</a>
     <a href="#" id="nav-history" onclick="showPage('history')">履歴</a>
   </nav>
 </header>
@@ -735,6 +736,188 @@
       <div id="history-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
+    <!-- チャンネル一括処理ページ -->
+    <div id="batch-page" style="display:none;flex-direction:column;gap:16px;">
+
+      <!-- チャンネルURL + 期間 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="icon">📺</span> チャンネル設定
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>チャンネルURL または @handle</label>
+            <input type="url" id="batch-channel-url" placeholder="https://www.youtube.com/@channelname">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label>開始日（以降）</label>
+              <input type="date" id="batch-date-from" class="date-input">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label>終了日（以前）</label>
+              <input type="date" id="batch-date-to" class="date-input">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:14px;">
+            <label>最大取得件数</label>
+            <div class="slider-row">
+              <input type="range" id="batch-max-videos" min="1" max="100" value="20" step="1"
+                oninput="document.getElementById('batch-max-val').textContent=this.value+'本'">
+              <span class="slider-val" id="batch-max-val">20本</span>
+            </div>
+          </div>
+          <button class="btn btn-outline" onclick="fetchChannelVideos()" id="batch-fetch-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            動画リストを取得
+          </button>
+        </div>
+      </div>
+
+      <!-- 動画リスト -->
+      <div class="card" id="batch-video-list-card" style="display:none;">
+        <div class="card-header">
+          <span class="icon">🎬</span>
+          <span id="batch-video-count-label">取得した動画</span>
+          <div style="margin-left:auto;display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(true)">全選択</button>
+            <button class="btn btn-outline btn-sm" onclick="batchSelectAll(false)">全解除</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:12px;">
+          <div id="batch-video-list" style="display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto;"></div>
+        </div>
+      </div>
+
+      <!-- クリップ設定 -->
+      <div class="card" id="batch-clip-settings-card" style="display:none;">
+        <div class="card-header" onclick="toggleCard(this)">
+          <span class="icon">✂️</span> クリップ設定
+          <span class="toggle">▼</span>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>出力形式</label>
+            <div class="seg-ctrl">
+              <button class="active" id="batch-fmt-horizontal" onclick="setBatchFormat('horizontal')">横動画 (16:9)</button>
+              <button id="batch-fmt-vertical" onclick="setBatchFormat('vertical')">縦動画 (9:16)</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>1動画あたりの切り抜き本数</label>
+            <div class="slider-row">
+              <input type="range" id="batch-clips-count" min="1" max="10" value="3"
+                oninput="document.getElementById('batch-clips-val').textContent=this.value+'本'">
+              <span class="slider-val" id="batch-clips-val">3本</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>最短時間</label>
+            <div class="slider-row">
+              <input type="range" id="batch-min-dur" min="20" max="120" value="60" step="10"
+                oninput="document.getElementById('batch-min-dur-val').textContent=this.value+'秒'">
+              <span class="slider-val" id="batch-min-dur-val">60秒</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>最長時間</label>
+            <div class="slider-row">
+              <input type="range" id="batch-max-dur" min="60" max="600" value="300" step="30"
+                oninput="document.getElementById('batch-max-dur-val').textContent=(this.value>=60?Math.floor(this.value/60)+'分'+this.value%60+'秒':this.value+'秒')">
+              <span class="slider-val" id="batch-max-dur-val">5分0秒</span>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <div><div>タイトルオーバーレイ</div><div class="sub">動画にAI生成タイトルを表示</div></div>
+            <label class="toggle"><input type="checkbox" id="batch-show-title" checked><span class="toggle-slider"></span></label>
+          </div>
+          <div class="form-group" style="margin-top:14px;">
+            <label>Whisper モデル</label>
+            <select id="batch-whisper-model">
+              <option value="tiny">tiny – 最速・低精度</option>
+              <option value="base">base – 速い</option>
+              <option value="small" selected>small – バランス（推奨）</option>
+              <option value="medium">medium – 高精度</option>
+              <option value="large-v3">large-v3 – 最高精度（低速）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- アップロード・予約投稿設定 -->
+      <div class="card" id="batch-upload-card" style="display:none;">
+        <div class="card-header" onclick="toggleCard(this)">
+          <span class="icon">▶️</span> YouTubeアップロード・予約設定
+          <span class="toggle">▼</span>
+        </div>
+        <div class="card-body">
+          <div class="toggle-row" style="margin-bottom:14px;">
+            <div><div>自動アップロード</div><div class="sub">切り抜き完了後にYouTubeへ投稿</div></div>
+            <label class="toggle"><input type="checkbox" id="batch-do-upload" onchange="toggleBatchUploadSection()"><span class="toggle-slider"></span></label>
+          </div>
+          <div id="batch-upload-section" class="upload-section">
+            <div class="form-group">
+              <label>公開設定</label>
+              <div class="seg-ctrl">
+                <button class="active" id="batch-priv-private" onclick="setBatchPrivacy('private')">非公開</button>
+                <button id="batch-priv-unlisted" onclick="setBatchPrivacy('unlisted')">限定公開</button>
+                <button id="batch-priv-public" onclick="setBatchPrivacy('public')">公開</button>
+              </div>
+            </div>
+            <div class="toggle-row">
+              <div><div>公開予約</div><div class="sub">指定日時から自動で順番に公開</div></div>
+              <label class="toggle"><input type="checkbox" id="batch-use-schedule" onchange="toggleBatchSchedule()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="batch-schedule-section" style="display:none;margin-top:12px;">
+              <div class="form-group">
+                <label>最初の公開日時</label>
+                <input type="datetime-local" id="batch-schedule-at" class="date-input">
+              </div>
+              <div class="form-group">
+                <label>動画間の公開間隔</label>
+                <div class="slider-row">
+                  <input type="range" id="batch-schedule-interval" min="1" max="72" value="24" step="1"
+                    oninput="document.getElementById('batch-interval-val').textContent=this.value+'時間ごと'">
+                  <span class="slider-val" id="batch-interval-val">24時間ごと</span>
+                </div>
+              </div>
+              <div class="alert alert-info" style="font-size:12px;">
+                切り抜き動画が全部で10本なら、設定間隔ごとに順番に自動公開されます
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- バッチ処理進捗 -->
+      <div class="card" id="batch-progress-card" style="display:none;">
+        <div class="card-header">
+          <span class="icon">⏳</span> 一括処理状況
+        </div>
+        <div class="card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span id="batch-progress-msg" style="font-size:13px;"></span>
+            <span id="batch-progress-pct" style="font-size:13px;font-weight:700;color:var(--accent-light);">0%</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-inner" id="batch-progress-bar" style="width:0%"></div>
+          </div>
+          <div id="batch-video-status-list" style="margin-top:14px;display:flex;flex-direction:column;gap:6px;"></div>
+          <div class="log-box" id="batch-log-box" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- バッチ結果 -->
+      <div id="batch-results-panel" style="display:none;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px;">
+          ✅ 一括処理完了
+          <span id="batch-result-count" style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;"></span>
+        </div>
+        <div id="batch-clips-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>
+
+    </div>
+
   </div>
 
   <!-- 右パネル -->
@@ -775,6 +958,14 @@
   <span class="submit-hint" id="submit-hint">URLを入力して処理を開始してください</span>
 </div>
 
+<!-- バッチ処理開始ボタン（バッチページ用フッター） -->
+<div class="submit-area" id="batch-submit-area" style="display:none;">
+  <button class="btn btn-primary" id="batch-start-btn" onclick="startBatchJob()" style="min-width:200px;">
+    ▶ 一括処理を開始
+  </button>
+  <span class="submit-hint" id="batch-submit-hint">動画リストを取得してから処理を開始してください</span>
+</div>
+
 <script>
 /* ───────────────────────────────────────────────────────
    状態管理
@@ -794,9 +985,12 @@ const state = {
 ─────────────────────────────────────────────────────── */
 function showPage(page) {
   document.getElementById('main-page').style.display = page === 'main' ? '' : 'none';
+  document.getElementById('batch-page').style.display = page === 'batch' ? 'flex' : 'none';
   document.getElementById('history-page').style.display = page === 'history' ? '' : 'none';
   document.getElementById('submit-area').style.display = page === 'main' ? '' : 'none';
+  document.getElementById('batch-submit-area').style.display = page === 'batch' ? '' : 'none';
   document.getElementById('nav-main').classList.toggle('active', page === 'main');
+  document.getElementById('nav-batch').classList.toggle('active', page === 'batch');
   document.getElementById('nav-history').classList.toggle('active', page === 'history');
   if (page === 'history') loadHistory();
 }
@@ -1254,6 +1448,296 @@ async function loadHistory() {
       if (job.status === 'completed') showResults(job);
     };
     list.appendChild(row);
+  });
+}
+
+/* ───────────────────────────────────────────────────────
+   チャンネル一括処理
+─────────────────────────────────────────────────────── */
+const batchState = {
+  outputFormat: 'horizontal',
+  privacy: 'private',
+  fetchedVideos: [],
+  currentBatchJobId: null,
+  ws: null,
+};
+
+function setBatchFormat(f) {
+  batchState.outputFormat = f;
+  ['batch-fmt-horizontal', 'batch-fmt-vertical'].forEach(id => {
+    document.getElementById(id)?.classList.toggle('active', id === `batch-fmt-${f}`);
+  });
+}
+
+function setBatchPrivacy(p) {
+  batchState.privacy = p;
+  ['batch-priv-private', 'batch-priv-unlisted', 'batch-priv-public'].forEach(id => {
+    document.getElementById(id)?.classList.toggle('active', id === `batch-priv-${p}`);
+  });
+}
+
+function toggleBatchUploadSection() {
+  const enabled = document.getElementById('batch-do-upload').checked;
+  document.getElementById('batch-upload-section').classList.toggle('visible', enabled);
+}
+
+function toggleBatchSchedule() {
+  const enabled = document.getElementById('batch-use-schedule').checked;
+  document.getElementById('batch-schedule-section').style.display = enabled ? '' : 'none';
+}
+
+function batchSelectAll(checked) {
+  document.querySelectorAll('.batch-video-checkbox').forEach(cb => { cb.checked = checked; });
+}
+
+async function fetchChannelVideos() {
+  const url = document.getElementById('batch-channel-url').value.trim();
+  if (!url) { alert('チャンネルURLを入力してください'); return; }
+
+  const dateFrom = document.getElementById('batch-date-from').value;
+  const dateTo   = document.getElementById('batch-date-to').value;
+  const maxVideos = document.getElementById('batch-max-videos').value;
+
+  const btn = document.getElementById('batch-fetch-btn');
+  btn.disabled = true;
+  btn.textContent = '取得中...';
+
+  try {
+    let apiUrl = `/api/channel-videos?url=${encodeURIComponent(url)}&max_videos=${maxVideos}`;
+    if (dateFrom) apiUrl += `&date_from=${dateFrom}`;
+    if (dateTo)   apiUrl += `&date_to=${dateTo}`;
+
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error((await res.json()).detail);
+    const videos = await res.json();
+    batchState.fetchedVideos = videos;
+    renderBatchVideoList(videos);
+  } catch (e) {
+    alert('動画リストの取得に失敗しました: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '動画リストを取得';
+  }
+}
+
+function renderBatchVideoList(videos) {
+  const list = document.getElementById('batch-video-list');
+  const card = document.getElementById('batch-video-list-card');
+  const clipCard = document.getElementById('batch-clip-settings-card');
+  const upCard = document.getElementById('batch-upload-card');
+  list.innerHTML = '';
+
+  if (videos.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px;">指定期間に動画が見つかりませんでした</div>';
+    card.style.display = '';
+    return;
+  }
+
+  document.getElementById('batch-video-count-label').textContent = `取得した動画 (${videos.length}本)`;
+
+  videos.forEach((v, i) => {
+    const dur = v.duration ? `${Math.floor(v.duration/60)}分${v.duration%60}秒` : '不明';
+    const date = v.upload_date
+      ? `${v.upload_date.slice(0,4)}/${v.upload_date.slice(4,6)}/${v.upload_date.slice(6,8)}`
+      : '';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px;';
+    row.innerHTML = `
+      <input type="checkbox" class="batch-video-checkbox" id="bv-${i}" checked
+        style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;">
+      <img src="${v.thumbnail_url}" style="width:80px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;"
+        onerror="this.style.background='#333';this.style.display='none'">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.title}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${date} &nbsp;·&nbsp; ${dur}</div>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  card.style.display = '';
+  clipCard.style.display = '';
+  upCard.style.display = '';
+}
+
+async function startBatchJob() {
+  const channelUrl = document.getElementById('batch-channel-url').value.trim();
+  if (batchState.fetchedVideos.length === 0) {
+    alert('先に動画リストを取得してください');
+    return;
+  }
+
+  // 選択された動画のみ
+  const selected = batchState.fetchedVideos.filter((_, i) => {
+    const cb = document.getElementById(`bv-${i}`);
+    return cb && cb.checked;
+  });
+
+  if (selected.length === 0) {
+    alert('処理する動画を1本以上選択してください');
+    return;
+  }
+
+  const doUpload = document.getElementById('batch-do-upload').checked;
+  const scheduleAt = document.getElementById('batch-use-schedule').checked
+    ? document.getElementById('batch-schedule-at').value : null;
+
+  const body = {
+    channel_url: channelUrl,
+    video_urls: selected.map(v => v.url),
+    video_titles: selected.map(v => v.title),
+    video_thumbnails: selected.map(v => v.thumbnail_url),
+    video_upload_dates: selected.map(v => v.upload_date || ''),
+    video_durations: selected.map(v => v.duration || 0),
+    clips_count: +document.getElementById('batch-clips-count').value,
+    min_duration: +document.getElementById('batch-min-dur').value,
+    max_duration: +document.getElementById('batch-max-dur').value,
+    output_format: batchState.outputFormat,
+    show_title: document.getElementById('batch-show-title').checked,
+    whisper_model: document.getElementById('batch-whisper-model').value,
+    device: 'cpu',
+    do_upload: doUpload,
+    privacy: batchState.privacy,
+    schedule_at: scheduleAt,
+    schedule_interval: +document.getElementById('batch-schedule-interval').value,
+  };
+
+  const btn = document.getElementById('batch-start-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+
+  try {
+    const res = await fetch('/api/batch-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    const { job_id } = await res.json();
+    batchState.currentBatchJobId = job_id;
+
+    // 進捗パネル表示
+    document.getElementById('batch-progress-card').style.display = '';
+    document.getElementById('batch-results-panel').style.display = 'none';
+    renderBatchVideoStatusList(selected);
+
+    connectBatchWebSocket(job_id, selected);
+  } catch (e) {
+    alert('エラー: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '▶ 一括処理を開始'; }
+  }
+}
+
+function renderBatchVideoStatusList(videos) {
+  const list = document.getElementById('batch-video-status-list');
+  list.innerHTML = '';
+  videos.forEach((v, i) => {
+    const el = document.createElement('div');
+    el.id = `bvs-${i}`;
+    el.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);padding:3px 0;';
+    el.innerHTML = `
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;" id="bvs-dot-${i}"></div>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.title}</span>
+      <span id="bvs-status-${i}" style="flex-shrink:0;">待機中</span>
+    `;
+    list.appendChild(el);
+  });
+}
+
+function connectBatchWebSocket(jobId, selectedVideos) {
+  const ws = new WebSocket(`ws://${location.host}/ws/batch-jobs/${jobId}`);
+  batchState.ws = ws;
+  ws.onmessage = (e) => {
+    if (e.data === '{"ping": true}') return;
+    try {
+      const job = JSON.parse(e.data);
+      updateBatchProgressUI(job, selectedVideos);
+    } catch (_) {}
+  };
+  ws.onclose = () => {
+    const btn = document.getElementById('batch-start-btn');
+    if (btn) { btn.disabled = false; btn.textContent = '▶ 一括処理を開始'; }
+  };
+}
+
+function updateBatchProgressUI(job, selectedVideos) {
+  document.getElementById('batch-progress-bar').style.width = job.progress + '%';
+  document.getElementById('batch-progress-pct').textContent = job.progress + '%';
+  document.getElementById('batch-progress-msg').textContent = job.message || '';
+
+  if (job.logs && job.logs.length > 0) {
+    const box = document.getElementById('batch-log-box');
+    box.textContent = job.logs.slice(-15).join('\n');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // 各動画のステータスドット更新
+  if (job.videos) {
+    job.videos.forEach((v, i) => {
+      const dot = document.getElementById(`bvs-dot-${i}`);
+      const label = document.getElementById(`bvs-status-${i}`);
+      if (!dot || !label) return;
+      const colorMap = {
+        pending: 'var(--border)',
+        running: 'var(--accent)',
+        completed: 'var(--success)',
+        failed: 'var(--danger)',
+        skipped: 'var(--text-muted)',
+      };
+      dot.style.background = colorMap[v.status] || 'var(--border)';
+      if (v.status === 'running') dot.style.animation = 'pulse 1.5s infinite';
+      else dot.style.animation = '';
+      const statusText = { pending:'待機中', running:'処理中...', completed:`完了 (${v.clips_count}本)`, failed:'エラー', skipped:'スキップ' };
+      label.textContent = statusText[v.status] || v.status;
+      if (v.status === 'failed') label.style.color = 'var(--danger)';
+      if (v.status === 'completed') label.style.color = 'var(--success)';
+    });
+  }
+
+  if (job.status === 'completed') {
+    showBatchResults(job);
+  }
+  if (job.status === 'failed') {
+    document.getElementById('batch-progress-msg').style.color = 'var(--danger)';
+  }
+}
+
+function showBatchResults(job) {
+  const panel = document.getElementById('batch-results-panel');
+  panel.style.display = '';
+  document.getElementById('batch-result-count').textContent =
+    `${(job.all_clips || []).length}本の切り抜きが生成されました`;
+  const list = document.getElementById('batch-clips-list');
+  list.innerHTML = '';
+  (job.all_clips || []).forEach((clip, i) => {
+    const dur = `${Math.floor(clip.duration/60)}分${Math.floor(clip.duration%60)}秒`;
+    const youtubeBtn = clip.youtube_url
+      ? `<a href="${clip.youtube_url}" target="_blank" class="btn btn-success btn-sm">YouTubeで見る</a>` : '';
+    const schedBadge = clip.scheduled_at
+      ? `<span class="badge badge-pending">予約: ${new Date(clip.scheduled_at).toLocaleString('ja')}</span>`
+      : (clip.youtube_url ? `<span class="badge badge-success">公開済</span>` : '');
+    const card = document.createElement('div');
+    card.className = 'clip-card fade-in';
+    card.innerHTML = `
+      <div class="clip-thumb">
+        ${clip.thumbnail_url
+          ? `<img src="${clip.thumbnail_url}" alt="">`
+          : `<div style="width:100%;height:100%;background:#111;display:flex;align-items:center;justify-content:center;color:#555;font-size:12px;">No thumb</div>`}
+      </div>
+      <div class="clip-info">
+        <div class="clip-title">${clip.title}</div>
+        <div class="clip-meta">
+          <span>⏱ ${dur}</span>
+          <span>📊 ${clip.file_size_mb.toFixed(1)}MB</span>
+          <span class="badge badge-score">スコア ${clip.score.toFixed(2)}</span>
+          ${schedBadge}
+        </div>
+        <div class="clip-actions">
+          <a href="/api/jobs/${job.id}/download/${clip.filename}" class="btn btn-outline btn-sm">⬇ ダウンロード</a>
+          ${youtubeBtn}
+        </div>
+      </div>
+    `;
+    list.appendChild(card);
   });
 }
 

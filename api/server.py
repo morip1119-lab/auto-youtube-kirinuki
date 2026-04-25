@@ -16,8 +16,9 @@ from pydantic import BaseModel, HttpUrl
 from dotenv import load_dotenv
 load_dotenv()
 
-from .job_manager import job_manager, JobStatus
+from .job_manager import job_manager, JobStatus, BatchVideoItem
 from .pipeline import run_pipeline
+from .batch_pipeline import run_batch_pipeline
 
 app = FastAPI(title="YouTube切り抜きツール", version="1.0.0")
 
@@ -121,6 +122,144 @@ async def get_video_info(url: str):
         }
     except Exception as e:
         raise HTTPException(400, f"動画情報の取得に失敗しました: {e}")
+
+
+@app.get("/api/channel-videos")
+async def get_channel_videos(
+    url: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    max_videos: int = 50,
+):
+    """チャンネルの動画リストを期間フィルター付きで取得"""
+    try:
+        from src.downloader import YouTubeDownloader
+        loop = asyncio.get_event_loop()
+        downloader = YouTubeDownloader()
+        videos = await loop.run_in_executor(
+            None,
+            lambda: downloader.get_channel_videos(
+                channel_url=url,
+                date_from=date_from,
+                date_to=date_to,
+                max_videos=max_videos,
+            ),
+        )
+        return [
+            {
+                "video_id": v.video_id,
+                "title": v.title,
+                "duration": v.duration,
+                "upload_date": v.upload_date,
+                "view_count": v.view_count,
+                "thumbnail_url": v.thumbnail_url,
+                "url": f"https://www.youtube.com/watch?v={v.video_id}",
+            }
+            for v in videos
+        ]
+    except Exception as e:
+        raise HTTPException(400, f"チャンネル動画リストの取得に失敗しました: {e}")
+
+
+class BatchJobCreateRequest(BaseModel):
+    channel_url: str
+    video_urls: list[str]        # 処理する動画URLリスト
+    video_titles: list[str] = [] # 各動画のタイトル（表示用）
+    video_thumbnails: list[str] = []
+    video_upload_dates: list[str] = []
+    video_durations: list[int] = []
+    # クリップ設定
+    clips_count: int = 3
+    min_duration: int = 60
+    max_duration: int = 300
+    output_format: str = "horizontal"
+    show_title: bool = True
+    whisper_model: str = "small"
+    device: str = "cpu"
+    # アップロード設定
+    do_upload: bool = False
+    privacy: str = "private"
+    schedule_at: Optional[str] = None
+    schedule_interval: int = 24
+
+
+@app.post("/api/batch-jobs")
+async def create_batch_job(req: BatchJobCreateRequest, background_tasks: BackgroundTasks):
+    """チャンネル一括処理ジョブを作成して開始する"""
+    if not req.video_urls:
+        raise HTTPException(400, "処理する動画URLが指定されていません")
+
+    videos = []
+    for i, url in enumerate(req.video_urls):
+        videos.append(BatchVideoItem(
+            index=i,
+            url=url,
+            title=req.video_titles[i] if i < len(req.video_titles) else "",
+            thumbnail=req.video_thumbnails[i] if i < len(req.video_thumbnails) else "",
+            upload_date=req.video_upload_dates[i] if i < len(req.video_upload_dates) else "",
+            duration=req.video_durations[i] if i < len(req.video_durations) else 0,
+        ))
+
+    batch_job = job_manager.create_batch_job(
+        channel_url=req.channel_url,
+        videos=videos,
+        settings=req.model_dump(),
+    )
+    background_tasks.add_task(run_batch_pipeline, batch_job)
+    return {"job_id": batch_job.id, "status": batch_job.status.value, "total": len(videos)}
+
+
+@app.get("/api/batch-jobs")
+async def list_batch_jobs():
+    """バッチジョブ一覧を返す"""
+    jobs = job_manager.get_all_batch_jobs()
+    return [j.to_dict() for j in jobs]
+
+
+@app.get("/api/batch-jobs/{job_id}")
+async def get_batch_job(job_id: str):
+    """指定バッチジョブの状態を返す"""
+    job = job_manager.get_batch_job(job_id)
+    if not job:
+        raise HTTPException(404, "バッチジョブが見つかりません")
+    return job.to_dict()
+
+
+@app.websocket("/ws/batch-jobs/{job_id}")
+async def batch_job_progress_ws(websocket: WebSocket, job_id: str):
+    """バッチジョブの進捗をリアルタイムで配信するWebSocket"""
+    await websocket.accept()
+    job = job_manager.get_batch_job(job_id)
+    if not job:
+        await websocket.send_json({"error": "バッチジョブが見つかりません"})
+        await websocket.close()
+        return
+    await websocket.send_text(
+        __import__("json").dumps(job.to_dict(), ensure_ascii=False)
+    )
+    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+        await websocket.close()
+        return
+    queue = job_manager.subscribe(job_id)
+    try:
+        while True:
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=30.0)
+                await websocket.send_text(payload)
+                import json
+                data = json.loads(payload)
+                if data.get("status") in ("completed", "failed", "cancelled"):
+                    break
+            except asyncio.TimeoutError:
+                await websocket.send_json({"ping": True})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        job_manager.unsubscribe(job_id, queue)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 @app.get("/api/settings")
