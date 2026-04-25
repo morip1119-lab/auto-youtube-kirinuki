@@ -165,6 +165,23 @@ class YouTubeDownloader:
             date_to: 終了日 YYYY-MM-DD 形式（この日以前）
             max_videos: 最大取得件数
         """
+        # @handle だけの入力を完全なURLに補完
+        channel_url = channel_url.strip()
+        if channel_url.startswith("@"):
+            channel_url = f"https://www.youtube.com/{channel_url}"
+
+        # チャンネルURLに /videos が付いていなければ補完（動画一覧取得に必要）
+        if (
+            "youtube.com/@" in channel_url or
+            "youtube.com/channel/" in channel_url or
+            "youtube.com/c/" in channel_url or
+            "youtube.com/user/" in channel_url
+        ):
+            # /videos /shorts /streams などが既についていなければ付加
+            path = channel_url.rstrip("/")
+            if not any(path.endswith(s) for s in ["/videos", "/shorts", "/streams", "/playlists"]):
+                channel_url = path + "/videos"
+
         # YYYY-MM-DD → YYYYMMDD 変換
         def to_ydl_date(d: str) -> str:
             return d.replace("-", "") if d else ""
