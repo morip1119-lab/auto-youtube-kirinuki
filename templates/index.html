@@ -1558,8 +1558,10 @@ async function fetchChannelVideos() {
   btn.disabled = true;
   btn.textContent = '取得中...';
 
+  const sortOrder = document.getElementById('batch-sort-order')?.value || 'newest';
+
   try {
-    let apiUrl = `/api/channel-videos?url=${encodeURIComponent(url)}&max_videos=${maxVideos}`;
+    let apiUrl = `/api/channel-videos?url=${encodeURIComponent(url)}&max_videos=${maxVideos}&sort_order=${sortOrder}`;
     if (dateFrom) apiUrl += `&date_from=${dateFrom}`;
     if (dateTo)   apiUrl += `&date_to=${dateTo}`;
 

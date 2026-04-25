@@ -156,6 +156,7 @@ class YouTubeDownloader:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         max_videos: int = 50,
+        sort_order: str = "newest",
     ) -> list[VideoInfo]:
         """チャンネルの動画リストを取得（期間フィルター付き）
 
@@ -163,73 +164,130 @@ class YouTubeDownloader:
             channel_url: チャンネルURL または @handle
             date_from: 開始日 YYYY-MM-DD 形式（この日以降）
             date_to: 終了日 YYYY-MM-DD 形式（この日以前）
-            max_videos: 最大取得件数
+            max_videos: フィルター後の最大件数
+            sort_order: "newest" | "oldest" | "views"
         """
-        # @handle だけの入力を完全なURLに補完
         channel_url = channel_url.strip()
         if channel_url.startswith("@"):
             channel_url = f"https://www.youtube.com/{channel_url}"
 
-        # チャンネルURLに /videos が付いていなければ補完（動画一覧取得に必要）
+        base_url = channel_url.rstrip("/")
         if (
-            "youtube.com/@" in channel_url or
-            "youtube.com/channel/" in channel_url or
-            "youtube.com/c/" in channel_url or
-            "youtube.com/user/" in channel_url
+            "youtube.com/@" in base_url or
+            "youtube.com/channel/" in base_url or
+            "youtube.com/c/" in base_url or
+            "youtube.com/user/" in base_url
         ):
-            # /videos /shorts /streams などが既についていなければ付加
-            path = channel_url.rstrip("/")
-            if not any(path.endswith(s) for s in ["/videos", "/shorts", "/streams", "/playlists"]):
-                channel_url = path + "/videos"
+            if not any(base_url.endswith(s) for s in ["/videos", "/shorts", "/streams", "/playlists"]):
+                base_url += "/videos"
 
-        # YYYY-MM-DD → YYYYMMDD 変換
+        # 並び順を URL で指定（YouTube の sort パラメータ）
+        if sort_order == "oldest":
+            base_url += "?view=0&sort=da"
+        elif sort_order == "views":
+            base_url += "?view=0&sort=p"
+        # newest はデフォルト（パラメータ不要）
+
         def to_ydl_date(d: str) -> str:
             return d.replace("-", "") if d else ""
 
         date_from_ydl = to_ydl_date(date_from or "")
-        date_to_ydl = to_ydl_date(date_to or "")
+        date_to_ydl   = to_ydl_date(date_to   or "")
+        has_date_filter = bool(date_from_ydl or date_to_ydl)
 
-        ydl_opts: dict = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": "in_playlist",
-            "playlistend": max_videos,
-        }
-        if date_from_ydl or date_to_ydl:
+        # ─────────────────────────────────────────────────────────────────
+        # 重要: extract_flat では upload_date が取れないケースが多い。
+        # そのため extract_flat を使わず個別メタデータを取得する。
+        # ただし全件フェッチは遅いので、日付フィルターなしの場合のみ
+        # 高速な flat モードを使い、フィルターあり時は daterange に頼る。
+        # ─────────────────────────────────────────────────────────────────
+        if has_date_filter:
+            # daterange フィルターを yt-dlp に渡して確実に絞り込む
+            # playlistend は大きめにして期間内の動画を取り漏らさないようにする
+            ydl_opts: dict = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "playlistend": min(max_videos * 20, 2000),
+                "ignoreerrors": True,
+            }
             try:
-                date_range = yt_dlp.utils.DateRange(
+                ydl_opts["daterange"] = yt_dlp.utils.DateRange(
                     date_from_ydl or None,
-                    date_to_ydl or None,
+                    date_to_ydl   or None,
                 )
-                ydl_opts["daterange"] = date_range
             except Exception:
                 pass
+        else:
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": "in_playlist",
+                "playlistend": max_videos,
+                "ignoreerrors": True,
+            }
 
         videos: list[VideoInfo] = []
+        channel_title_fallback = ""
+        channel_id_fallback    = ""
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(channel_url, download=False)
-            entries = info.get("entries", []) if info else []
+            info = ydl.extract_info(base_url, download=False)
+            if not info:
+                return []
+            channel_title_fallback = info.get("channel", info.get("uploader", ""))
+            channel_id_fallback    = info.get("channel_id", "")
+            entries = [e for e in (info.get("entries") or []) if e]
+
             for entry in entries:
-                if not entry:
+                video_id    = entry.get("id", "")
+                upload_date = (entry.get("upload_date") or "").strip()
+
+                # extract_flat で upload_date が取れなかった場合: 個別取得
+                if has_date_filter and not upload_date and video_id:
+                    try:
+                        single_opts = {"quiet": True, "no_warnings": True}
+                        with yt_dlp.YoutubeDL(single_opts) as ydl2:
+                            full = ydl2.extract_info(
+                                f"https://www.youtube.com/watch?v={video_id}",
+                                download=False,
+                            )
+                        if full:
+                            upload_date = (full.get("upload_date") or "").strip()
+                            entry.update(full)
+                    except Exception:
+                        pass
+
+                # 手動日付フィルター（daterange が効かない場合の保険 + 個別取得分）
+                if has_date_filter and upload_date:
+                    if date_from_ydl and upload_date < date_from_ydl:
+                        continue
+                    if date_to_ydl and upload_date > date_to_ydl:
+                        continue
+                elif has_date_filter and not upload_date:
+                    # 日付が取れなかったものは除外（フィルター結果の精度を守る）
                     continue
-                upload_date = entry.get("upload_date", "")
-                # 日付フィルターを手動でも適用（daterangeが効かない場合の保険）
-                if date_from_ydl and upload_date and upload_date < date_from_ydl:
-                    continue
-                if date_to_ydl and upload_date and upload_date > date_to_ydl:
-                    continue
+
+                thumb = (
+                    entry.get("thumbnail")
+                    or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                )
                 videos.append(VideoInfo(
-                    video_id=entry.get("id", ""),
+                    video_id=video_id,
                     title=entry.get("title", ""),
                     description=entry.get("description", ""),
                     duration=entry.get("duration", 0) or 0,
-                    channel_title=info.get("channel", info.get("uploader", "")),
-                    channel_id=info.get("channel_id", ""),
+                    channel_title=entry.get("channel", channel_title_fallback),
+                    channel_id=entry.get("channel_id", channel_id_fallback),
                     upload_date=upload_date,
                     view_count=entry.get("view_count", 0) or 0,
                     tags=[],
-                    thumbnail_url=entry.get("thumbnail", f"https://img.youtube.com/vi/{entry.get('id','')}/hqdefault.jpg"),
+                    thumbnail_url=thumb,
                 ))
+
+                if len(videos) >= max_videos:
+                    break
+
         return videos
 
     def save_video_info(self, info: VideoInfo, output_path: Path) -> None:

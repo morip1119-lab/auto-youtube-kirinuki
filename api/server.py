@@ -130,6 +130,7 @@ async def get_channel_videos(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     max_videos: int = 50,
+    sort_order: str = "newest",
 ):
     """チャンネルの動画リストを期間フィルター付きで取得"""
     try:
@@ -143,6 +144,7 @@ async def get_channel_videos(
                 date_from=date_from,
                 date_to=date_to,
                 max_videos=max_videos,
+                sort_order=sort_order,
             ),
         )
         return [
