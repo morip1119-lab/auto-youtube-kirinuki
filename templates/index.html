@@ -502,7 +502,10 @@
 <div class="main-layout">
 
   <!-- 左パネル -->
-  <div class="left-panel" id="main-page">
+  <div class="left-panel">
+
+  <!-- メインページ -->
+  <div id="main-page" style="display:flex;flex-direction:column;gap:16px;width:100%;">
 
     <!-- URL入力 -->
     <div class="card">
@@ -730,13 +733,15 @@
       <div id="clips-list" style="display:flex;flex-direction:column;gap:12px;"></div>
     </div>
 
-    <!-- 履歴ページ -->
-    <div id="history-page" style="display:none;">
-      <div style="font-size:16px;font-weight:700;margin-bottom:16px;">処理履歴</div>
-      <div id="history-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-    </div>
+  </div><!-- /#main-page -->
 
-    <!-- チャンネル一括処理ページ -->
+  <!-- 履歴ページ -->
+  <div id="history-page" style="display:none;flex-direction:column;gap:12px;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">処理履歴</div>
+    <div id="history-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+
+  <!-- チャンネル一括処理ページ -->
     <div id="batch-page" style="display:none;flex-direction:column;gap:16px;">
 
       <!-- チャンネルURL + 期間 -->
@@ -984,11 +989,24 @@ const state = {
    ページ切り替え
 ─────────────────────────────────────────────────────── */
 function showPage(page) {
-  document.getElementById('main-page').style.display = page === 'main' ? '' : 'none';
-  document.getElementById('batch-page').style.display = page === 'batch' ? 'flex' : 'none';
-  document.getElementById('history-page').style.display = page === 'history' ? '' : 'none';
-  document.getElementById('submit-area').style.display = page === 'main' ? '' : 'none';
+  document.getElementById('main-page').style.display   = page === 'main'    ? 'flex' : 'none';
+  document.getElementById('batch-page').style.display  = page === 'batch'   ? 'flex' : 'none';
+  document.getElementById('history-page').style.display = page === 'history' ? 'flex' : 'none';
+
+  document.getElementById('submit-area').style.display       = page === 'main'  ? '' : 'none';
   document.getElementById('batch-submit-area').style.display = page === 'batch' ? '' : 'none';
+
+  // バッチ・履歴ページでは右パネルを非表示にして全幅を使う
+  const rightPanel = document.querySelector('.right-panel');
+  const mainLayout = document.querySelector('.main-layout');
+  if (page === 'main') {
+    rightPanel.style.display = '';
+    mainLayout.style.gridTemplateColumns = '1fr 640px';
+  } else {
+    rightPanel.style.display = 'none';
+    mainLayout.style.gridTemplateColumns = '1fr';
+  }
+
   document.getElementById('nav-main').classList.toggle('active', page === 'main');
   document.getElementById('nav-batch').classList.toggle('active', page === 'batch');
   document.getElementById('nav-history').classList.toggle('active', page === 'history');
