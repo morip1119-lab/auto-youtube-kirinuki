@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube 切り抜きツール</title>
+  <style>
+    /* ── リセット & 変数 ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --border: #2e2e3e;
+      --accent: #7c6ff7;
+      --accent-light: #9d98ff;
+      --accent-dim: rgba(124,111,247,0.15);
+      --text: #e8e8f0;
+      --text-muted: #8888aa;
+      --success: #3ecf8e;
+      --warning: #f5a623;
+      --danger: #ef4444;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    body {
+      font-family: 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── ヘッダー ─────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent-light);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header .logo svg { width: 22px; height: 22px; }
+    header nav { margin-left: auto; display: flex; gap: 8px; }
+    header nav a {
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: all .2s;
+    }
+    header nav a:hover, header nav a.active {
+      background: var(--accent-dim);
+      color: var(--accent-light);
+    }
+
+    /* ── メインレイアウト ─────────────────────────── */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .left-panel {
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .right-panel {
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── カード ───────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header .icon { font-size: 16px; }
+    .card-header .toggle { margin-left: auto; color: var(--text-muted); transition: transform .2s; }
+    .card-header.collapsed .toggle { transform: rotate(-90deg); }
+    .card-body { padding: 18px; }
+    .card-body.hidden { display: none; }
+
+    /* ── フォーム要素 ─────────────────────────────── */
+    .form-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .form-group:last-child { margin-bottom: 0; }
+    label { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+    textarea, input[type="text"], input[type="url"], select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      width: 100%;
+      transition: border-color .2s;
+      resize: vertical;
+    }
+    textarea:focus, input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    textarea { min-height: 80px; }
+
+    /* ── セグメントコントロール ───────────────────── */
+    .seg-ctrl {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .seg-ctrl button {
+      flex: 1;
+      padding: 8px 0;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+    }
+    .seg-ctrl button.active {
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+    }
+
+    /* ── スライダー ───────────────────────────────── */
+    .slider-row { display: flex; align-items: center; gap: 12px; }
+    .slider-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+    .slider-val {
+      min-width: 44px;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-light);
+    }
+
+    /* ── トグルスイッチ ───────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .toggle-row span { font-size: 14px; }
+    .toggle-row .sub { font-size: 12px; color: var(--text-muted); }
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    /* ── ボタン ───────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--accent-light); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-outline {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent-light); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-full { width: 100%; }
+
+    /* ── 進捗パネル ───────────────────────────────── */
+    #progress-panel { display: none; }
+    #progress-panel.visible { display: flex; flex-direction: column; gap: 12px; }
+    .progress-bar-wrap {
+      background: var(--surface2);
+      border-radius: 100px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .progress-bar-inner {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-light));
+      border-radius: 100px;
+      transition: width .4s ease;
+    }
+    .step-list { display: flex; flex-direction: column; gap: 6px; }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 4px 0;
+    }
+    .step-item.active { color: var(--text); }
+    .step-item.done { color: var(--success); }
+    .step-icon {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .step-item.active .step-icon {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      animation: pulse 1.5s infinite;
+    }
+    .step-item.done .step-icon {
+      border-color: var(--success);
+      background: rgba(62,207,142,.15);
+      color: var(--success);
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(124,111,247,.4); }
+      50% { box-shadow: 0 0 0 6px rgba(124,111,247,0); }
+    }
+    .log-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      font-family: 'Consolas', monospace;
+      color: var(--text-muted);
+      max-height: 120px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+
+    /* ── 結果カード ───────────────────────────────── */
+    #results-panel { display: none; }
+    #results-panel.visible { display: flex; flex-direction: column; gap: 12px; }
+    .clip-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      gap: 0;
+    }
+    .clip-thumb {
+      width: 120px;
+      flex-shrink: 0;
+      background: #000;
+      position: relative;
+    }
+    .clip-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .clip-thumb .play-btn {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.4);
+      opacity: 0;
+      transition: opacity .15s;
+      cursor: pointer;
+    }
+    .clip-thumb:hover .play-btn { opacity: 1; }
+    .clip-info {
+      flex: 1;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .clip-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+    .clip-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 12px; }
+    .clip-meta span { display: flex; align-items: center; gap: 4px; }
+    .clip-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-success { background: rgba(62,207,142,.15); color: var(--success); }
+    .badge-pending { background: rgba(245,166,35,.15); color: var(--warning); }
+    .badge-score { background: var(--accent-dim); color: var(--accent-light); }
+
+    /* ── 履歴ページ ───────────────────────────────── */
+    #history-section { display: none; }
+    #history-section.visible { display: flex; flex-direction: column; gap: 12px; }
+    .history-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .history-row:hover { border-color: var(--accent); }
+    .history-status { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .status-completed { background: var(--success); }
+    .status-running { background: var(--accent); animation: pulse 1.5s infinite; }
+    .status-failed { background: var(--danger); }
+    .status-pending { background: var(--text-muted); }
+
+    /* ── 右パネル ─────────────────────────────────── */
+    .right-title { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .5px; text-transform: uppercase; }
+    .video-preview {
+      background: #000;
+      border-radius: var(--radius-sm);
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      overflow: hidden;
+    }
+    .video-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .video-meta-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .video-meta-item:last-child { border-bottom: none; }
+    .video-meta-item .k { font-size: 11px; color: var(--text-muted); }
+    .video-meta-item .v { font-size: 13px; font-weight: 500; }
+    .settings-summary { display: flex; flex-direction: column; gap: 8px; }
+    .ss-row { display: flex; justify-content: space-between; font-size: 12px; }
+    .ss-row .sk { color: var(--text-muted); }
+    .ss-row .sv { color: var(--accent-light); font-weight: 600; }
+
+    /* ── アップロード設定 ─────────────────────────── */
+    .date-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      width: 100%;
+      transition: border-color .2s;
+    }
+    .date-input:focus { outline: none; border-color: var(--accent); }
+    .upload-section { display: none; }
+    .upload-section.visible { display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── アラート ─────────────────────────────────── */
+    .alert {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      border-left: 3px solid;
+    }
+    .alert-info { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-light); }
+    .alert-success { background: rgba(62,207,142,.1); border-color: var(--success); color: var(--success); }
+    .alert-warning { background: rgba(245,166,35,.1); border-color: var(--warning); color: var(--warning); }
+
+    /* ── アニメーション ───────────────────────────── */
+    .fade-in { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* ── スクロールバー ───────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+    /* ── 処理開始ボタンエリア ─────────────────────── */
+    .submit-area {
+      position: sticky;
+      bottom: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .submit-hint { font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+      <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    YouTube 切り抜きツール
+  </div>
+  <nav>
+    <a href="#" class="active" id="nav-main" onclick="showPage('main')">切り抜き作成</a>
+    <a href="#" id="nav-history" onclick="showPage('history')">履歴</a>
+  </nav>
+</header>
+
+<!-- メインレイアウト -->
+<div class="main-layout">
+
+  <!-- 左パネル -->
+  <div class="left-panel" id="main-page">
+
+    <!-- URL入力 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="icon">🔗</span> 動画URL
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>YouTube URL</label>
+          <textarea id="url-input" placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX" rows="2"></textarea>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="fetchVideoInfo()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          動画情報を確認
+        </button>
+      </div>
+    </div>
+
+    <!-- クリップ設定 -->
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <span class="icon">✂️</span> クリップ設定
+        <span class="toggle">▼</span>
+      </div>
+      <div class="card-body">
+
+        <!-- 出力形式 -->
+        <div class="form-group">
+          <label>出力形式</label>
+          <div class="seg-ctrl">
+            <button class="active" id="fmt-horizontal" onclick="setFormat('horizontal')">横動画 (16:9)</button>
+            <button id="fmt-vertical" onclick="setFormat('vertical')">縦動画 (9:16)</button>
+          </div>
+          <div class="alert alert-info" id="format-hint" style="margin-top:8px;font-size:12px;">
+            横動画 (16:9): YouTubeの通常投稿向け
+          </div>
+        </div>
+
+        <!-- 切り抜きモード -->
+        <div class="form-group">
+          <label>切り抜きモード</label>
+          <div class="seg-ctrl">
+            <button class="active" id="mode-auto" onclick="setClipMode('auto')">AI自動選択</button>
+            <button id="mode-manual" onclick="setClipMode('manual')">手動指定</button>
+          </div>
+        </div>
+
+        <!-- スライダー群 -->
+        <div id="auto-settings">
+          <div class="form-group">
+            <label>切り抜き本数</label>
+            <div class="slider-row">
+              <span label>最小</span>
+              <input type="range" id="clips-count" min="1" max="10" value="3"
+                oninput="document.getElementById('clips-val').textContent=this.value+'本'">
+              <span class="slider-val" id="clips-val">3本</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>最短時間</label>
+            <div class="slider-row">
+              <input type="range" id="min-dur" min="20" max="120" value="60" step="10"
+                oninput="document.getElementById('min-dur-val').textContent=this.value+'秒'">
+              <span class="slider-val" id="min-dur-val">60秒</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>最長時間</label>
+            <div class="slider-row">
+              <input type="range" id="max-dur" min="60" max="600" value="300" step="30"
+                oninput="document.getElementById('max-dur-val').textContent=(this.value>=60?Math.floor(this.value/60)+'分'+this.value%60+'秒':this.value+'秒')">
+              <span class="slider-val" id="max-dur-val">5分0秒</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 手動指定 -->
+        <div id="manual-settings" style="display:none;">
+          <div class="form-group">
+            <label>時間指定 (開始秒〜終了秒)</label>
+            <div id="manual-segments-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="addManualSegment()">+ 区間を追加</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- タイトル設定 -->
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <span class="icon">T</span> タイトル
+        <span class="toggle">▼</span>
+      </div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div>
+            <div>タイトルオーバーレイ</div>
+            <div class="sub">動画にAI生成タイトルを表示します</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="show-title" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Whisperモデル設定 -->
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <span class="icon">⚙️</span> 詳細設定
+        <span class="toggle">▼</span>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>Whisper モデル（文字起こし精度）</label>
+          <select id="whisper-model">
+            <option value="tiny">tiny – 最速・低精度</option>
+            <option value="base">base – 速い</option>
+            <option value="small" selected>small – バランス（推奨）</option>
+            <option value="medium">medium – 高精度</option>
+            <option value="large-v3">large-v3 – 最高精度（低速）</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>処理デバイス</label>
+          <div class="seg-ctrl">
+            <button class="active" id="dev-cpu" onclick="setDevice('cpu')">CPU</button>
+            <button id="dev-cuda" onclick="setDevice('cuda')">GPU (CUDA)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- YouTube アップロード設定 -->
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <span class="icon">▶️</span> YouTubeアップロード
+        <span class="toggle">▼</span>
+      </div>
+      <div class="card-body">
+        <div class="toggle-row" style="margin-bottom:14px;">
+          <div>
+            <div>自動アップロード</div>
+            <div class="sub">切り抜き完了後にYouTubeへ投稿します</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="do-upload" onchange="toggleUploadSection()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="upload-section" id="upload-section">
+          <div class="form-group">
+            <label>公開設定</label>
+            <div class="seg-ctrl">
+              <button class="active" id="priv-private" onclick="setPrivacy('private')">非公開</button>
+              <button id="priv-unlisted" onclick="setPrivacy('unlisted')">限定公開</button>
+              <button id="priv-public" onclick="setPrivacy('public')">公開</button>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <div>
+              <div>公開予約</div>
+              <div class="sub">指定日時に自動公開します</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="use-schedule" onchange="toggleSchedule()">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div id="schedule-section" style="display:none;margin-top:12px;">
+            <div class="form-group">
+              <label>最初の公開日時</label>
+              <input type="datetime-local" id="schedule-at" class="date-input">
+            </div>
+            <div class="form-group">
+              <label>動画間の公開間隔</label>
+              <div class="slider-row">
+                <input type="range" id="schedule-interval" min="1" max="72" value="24" step="1"
+                  oninput="document.getElementById('interval-val').textContent=this.value+'時間ごと'">
+                <span class="slider-val" id="interval-val">24時間ごと</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 処理進捗 -->
+    <div class="card" id="progress-panel">
+      <div class="card-header">
+        <span class="icon">⏳</span> 処理状況
+      </div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span id="progress-msg" style="font-size:13px;"></span>
+          <span id="progress-pct" style="font-size:13px;font-weight:700;color:var(--accent-light);">0%</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-inner" id="progress-bar" style="width:0%"></div>
+        </div>
+        <div class="step-list" style="margin-top:14px;" id="step-list">
+          <div class="step-item" id="step-download"><div class="step-icon">1</div>ダウンロード</div>
+          <div class="step-item" id="step-transcribe"><div class="step-icon">2</div>文字起こし (Whisper)</div>
+          <div class="step-item" id="step-analyze"><div class="step-icon">3</div>AI分析・箇所特定</div>
+          <div class="step-item" id="step-cut"><div class="step-icon">4</div>動画を切り抜き</div>
+          <div class="step-item" id="step-metadata"><div class="step-icon">5</div>タイトル・概要欄生成</div>
+          <div class="step-item" id="step-upload"><div class="step-icon">6</div>YouTubeアップロード</div>
+        </div>
+        <div class="log-box" id="log-box" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- 結果 -->
+    <div id="results-panel">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px;">
+        ✅ 切り抜き完了
+        <span id="result-count" style="font-size:14px;font-weight:400;color:var(--text-muted);margin-left:8px;"></span>
+      </div>
+      <div id="clips-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+
+    <!-- 履歴ページ -->
+    <div id="history-page" style="display:none;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px;">処理履歴</div>
+      <div id="history-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
+  </div>
+
+  <!-- 右パネル -->
+  <div class="right-panel">
+    <div class="right-title">動画プレビュー</div>
+    <div class="video-preview" id="video-preview">
+      <span>URLを入力してください</span>
+    </div>
+    <div id="video-meta" style="display:none;">
+      <div class="video-meta-item"><div class="k">タイトル</div><div class="v" id="vt-title">-</div></div>
+      <div class="video-meta-item"><div class="k">チャンネル</div><div class="v" id="vt-channel">-</div></div>
+      <div class="video-meta-item"><div class="k">動画長</div><div class="v" id="vt-duration">-</div></div>
+    </div>
+    <div class="right-title" style="margin-top:8px;">現在の設定</div>
+    <div class="settings-summary" id="settings-summary">
+      <div class="ss-row"><span class="sk">出力形式</span><span class="sv" id="ss-format">横動画 (16:9)</span></div>
+      <div class="ss-row"><span class="sk">切り抜き本数</span><span class="sv" id="ss-clips">3本</span></div>
+      <div class="ss-row"><span class="sk">時間</span><span class="sv" id="ss-dur">60秒〜5分</span></div>
+      <div class="ss-row"><span class="sk">Whisper</span><span class="sv" id="ss-whisper">small</span></div>
+      <div class="ss-row"><span class="sk">アップロード</span><span class="sv" id="ss-upload">なし</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 処理開始ボタン（固定フッター） -->
+<div class="submit-area" id="submit-area">
+  <button class="btn btn-primary" id="start-btn" onclick="startJob()" style="min-width:160px;">
+    ▶ 処理を開始
+  </button>
+  <span class="submit-hint" id="submit-hint">URLを入力して処理を開始してください</span>
+</div>
+
+<script>
+/* ───────────────────────────────────────────────────────
+   状態管理
+─────────────────────────────────────────────────────── */
+const state = {
+  outputFormat: 'horizontal',
+  clipMode: 'auto',
+  device: 'cpu',
+  privacy: 'private',
+  currentJobId: null,
+  ws: null,
+  manualSegCount: 0,
+};
+
+/* ───────────────────────────────────────────────────────
+   ページ切り替え
+─────────────────────────────────────────────────────── */
+function showPage(page) {
+  document.getElementById('main-page').style.display = page === 'main' ? '' : 'none';
+  document.getElementById('history-page').style.display = page === 'history' ? '' : 'none';
+  document.getElementById('submit-area').style.display = page === 'main' ? '' : 'none';
+  document.getElementById('nav-main').classList.toggle('active', page === 'main');
+  document.getElementById('nav-history').classList.toggle('active', page === 'history');
+  if (page === 'history') loadHistory();
+}
+
+/* ───────────────────────────────────────────────────────
+   カードの折りたたみ
+─────────────────────────────────────────────────────── */
+function toggleCard(header) {
+  header.classList.toggle('collapsed');
+  header.nextElementSibling.classList.toggle('hidden');
+}
+
+/* ───────────────────────────────────────────────────────
+   セグメントコントロール ヘルパー
+─────────────────────────────────────────────────────── */
+function setSegActive(group, activeId) {
+  group.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', id === activeId);
+  });
+}
+
+/* ───────────────────────────────────────────────────────
+   設定変更
+─────────────────────────────────────────────────────── */
+function setFormat(f) {
+  state.outputFormat = f;
+  setSegActive(['fmt-horizontal', 'fmt-vertical'], `fmt-${f}`);
+  const hint = document.getElementById('format-hint');
+  hint.textContent = f === 'vertical'
+    ? '縦動画 (9:16): TikTok・Reels・Shorts向け（横動画をリフレーム）'
+    : '横動画 (16:9): YouTubeの通常投稿向け';
+  updateSummary();
+}
+
+function setClipMode(m) {
+  state.clipMode = m;
+  setSegActive(['mode-auto', 'mode-manual'], `mode-${m}`);
+  document.getElementById('auto-settings').style.display = m === 'auto' ? '' : 'none';
+  document.getElementById('manual-settings').style.display = m === 'manual' ? '' : 'none';
+}
+
+function setDevice(d) {
+  state.device = d;
+  setSegActive(['dev-cpu', 'dev-cuda'], `dev-${d}`);
+  updateSummary();
+}
+
+function setPrivacy(p) {
+  state.privacy = p;
+  setSegActive(['priv-private', 'priv-unlisted', 'priv-public'], `priv-${p}`);
+  updateSummary();
+}
+
+function toggleUploadSection() {
+  const enabled = document.getElementById('do-upload').checked;
+  document.getElementById('upload-section').classList.toggle('visible', enabled);
+  updateSummary();
+}
+
+function toggleSchedule() {
+  const enabled = document.getElementById('use-schedule').checked;
+  document.getElementById('schedule-section').style.display = enabled ? '' : 'none';
+}
+
+function addManualSegment() {
+  state.manualSegCount++;
+  const list = document.getElementById('manual-segments-list');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+  row.id = `seg-${state.manualSegCount}`;
+  row.innerHTML = `
+    <input type="number" placeholder="開始(秒)" min="0" style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;" id="seg-${state.manualSegCount}-start">
+    <span style="color:var(--text-muted)">〜</span>
+    <input type="number" placeholder="終了(秒)" min="0" style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;" id="seg-${state.manualSegCount}-end">
+    <input type="text" placeholder="タイトル(任意)" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;" id="seg-${state.manualSegCount}-title">
+    <button class="btn btn-outline btn-sm" onclick="document.getElementById('seg-${state.manualSegCount}').remove()">✕</button>
+  `;
+  list.appendChild(row);
+}
+
+/* ───────────────────────────────────────────────────────
+   右パネルのサマリーを更新
+─────────────────────────────────────────────────────── */
+function updateSummary() {
+  document.getElementById('ss-format').textContent = state.outputFormat === 'vertical' ? '縦 (9:16)' : '横 (16:9)';
+  document.getElementById('ss-clips').textContent = document.getElementById('clips-count').value + '本';
+  const minD = document.getElementById('min-dur').value;
+  const maxD = document.getElementById('max-dur').value;
+  document.getElementById('ss-dur').textContent = `${minD}秒〜${Math.floor(maxD/60)}分${maxD%60}秒`;
+  document.getElementById('ss-whisper').textContent = document.getElementById('whisper-model').value;
+  const doUp = document.getElementById('do-upload').checked;
+  document.getElementById('ss-upload').textContent = doUp ? `あり (${state.privacy})` : 'なし';
+}
+
+// スライダーの変更をサマリーに反映
+['clips-count', 'min-dur', 'max-dur'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateSummary);
+});
+document.getElementById('whisper-model')?.addEventListener('change', updateSummary);
+
+/* ───────────────────────────────────────────────────────
+   動画情報取得
+─────────────────────────────────────────────────────── */
+async function fetchVideoInfo() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return alert('URLを入力してください');
+  try {
+    const res = await fetch(`/api/video-info?url=${encodeURIComponent(url)}`);
+    if (!res.ok) throw new Error((await res.json()).detail);
+    const info = await res.json();
+    document.getElementById('vt-title').textContent = info.title;
+    document.getElementById('vt-channel').textContent = info.channel;
+    const m = Math.floor(info.duration / 60), s = info.duration % 60;
+    document.getElementById('vt-duration').textContent = `${m}分${s}秒`;
+    document.getElementById('video-meta').style.display = '';
+    if (info.thumbnail) {
+      document.getElementById('video-preview').innerHTML = `<img src="${info.thumbnail}" alt="">`;
+    }
+    document.getElementById('submit-hint').textContent = `「${info.title}」の切り抜きを開始できます`;
+  } catch (e) {
+    alert('動画情報の取得に失敗しました: ' + e.message);
+  }
+}
+
+// URLが入力されたら自動フェッチ
+document.getElementById('url-input').addEventListener('blur', () => {
+  if (document.getElementById('url-input').value.trim()) fetchVideoInfo();
+});
+
+/* ───────────────────────────────────────────────────────
+   ジョブ開始
+─────────────────────────────────────────────────────── */
+async function startJob() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { alert('URLを入力してください'); return; }
+
+  // 手動セグメント収集
+  const manualSegments = [];
+  if (state.clipMode === 'manual') {
+    for (let i = 1; i <= state.manualSegCount; i++) {
+      const s = document.getElementById(`seg-${i}-start`);
+      const e = document.getElementById(`seg-${i}-end`);
+      const t = document.getElementById(`seg-${i}-title`);
+      if (s && e && s.value && e.value) {
+        manualSegments.push({ start: +s.value, end: +e.value, title: t?.value || '' });
+      }
+    }
+    if (manualSegments.length === 0) { alert('手動指定の区間を追加してください'); return; }
+  }
+
+  const doUpload = document.getElementById('do-upload').checked;
+  const scheduleAt = document.getElementById('use-schedule').checked
+    ? document.getElementById('schedule-at').value
+    : null;
+
+  const body = {
+    url,
+    clips_count: +document.getElementById('clips-count').value,
+    min_duration: +document.getElementById('min-dur').value,
+    max_duration: +document.getElementById('max-dur').value,
+    output_format: state.outputFormat,
+    clip_mode: state.clipMode,
+    manual_segments: manualSegments,
+    show_title: document.getElementById('show-title').checked,
+    whisper_model: document.getElementById('whisper-model').value,
+    device: state.device,
+    do_upload: doUpload,
+    privacy: state.privacy,
+    schedule_at: scheduleAt,
+    schedule_interval: +document.getElementById('schedule-interval').value,
+  };
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = '処理中...';
+
+  try {
+    const res = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    const { job_id } = await res.json();
+    state.currentJobId = job_id;
+
+    showProgressPanel();
+    connectWebSocket(job_id);
+  } catch (e) {
+    alert('エラー: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '▶ 処理を開始';
+  }
+}
+
+/* ───────────────────────────────────────────────────────
+   WebSocket 進捗受信
+─────────────────────────────────────────────────────── */
+const STEPS = ['download', 'transcribe', 'analyze', 'cut', 'metadata', 'upload'];
+
+function connectWebSocket(jobId) {
+  const ws = new WebSocket(`ws://${location.host}/ws/jobs/${jobId}`);
+  state.ws = ws;
+  ws.onmessage = (e) => {
+    if (e.data === '{"ping": true}') return;
+    try {
+      const job = JSON.parse(e.data);
+      updateProgressUI(job);
+    } catch (_) {}
+  };
+  ws.onclose = () => {
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('start-btn').textContent = '▶ 処理を開始';
+  };
+}
+
+function updateProgressUI(job) {
+  document.getElementById('progress-bar').style.width = job.progress + '%';
+  document.getElementById('progress-pct').textContent = job.progress + '%';
+  document.getElementById('progress-msg').textContent = job.message || '';
+
+  // ログ追加
+  if (job.logs && job.logs.length > 0) {
+    const box = document.getElementById('log-box');
+    box.textContent = job.logs.slice(-10).join('\n');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // ステップ状態更新
+  const stepMap = {
+    download: 'step-download',
+    transcribe: 'step-transcribe',
+    analyze: 'step-analyze',
+    cut: 'step-cut',
+    metadata: 'step-metadata',
+    upload: 'step-upload',
+  };
+
+  STEPS.forEach(s => {
+    const el = document.getElementById(stepMap[s]);
+    if (!el) return;
+    el.classList.remove('active', 'done');
+    if (job.current_step === s) {
+      el.classList.add('active');
+      el.querySelector('.step-icon').textContent = '●';
+    }
+  });
+
+  // 完了したステップにチェック
+  if (job.current_step) {
+    const idx = STEPS.indexOf(job.current_step);
+    STEPS.slice(0, idx).forEach(s => {
+      const el = document.getElementById(stepMap[s]);
+      if (el) {
+        el.classList.add('done');
+        el.querySelector('.step-icon').textContent = '✓';
+      }
+    });
+  }
+
+  // 完了時に結果表示
+  if (job.status === 'completed') {
+    STEPS.forEach(s => {
+      const el = document.getElementById(stepMap[s]);
+      if (el && job.do_upload !== false) {
+        el.classList.add('done');
+        el.querySelector('.step-icon').textContent = '✓';
+      }
+    });
+    showResults(job);
+  }
+
+  if (job.status === 'failed') {
+    document.getElementById('progress-msg').textContent = '❌ ' + (job.error || 'エラーが発生しました');
+    document.getElementById('progress-msg').style.color = 'var(--danger)';
+  }
+}
+
+function showProgressPanel() {
+  document.getElementById('progress-panel').classList.add('visible');
+  document.getElementById('results-panel').classList.remove('visible');
+  STEPS.forEach(s => {
+    const id = `step-${s === 'transcribe' ? 'transcribe' : s}`;
+    const el = document.getElementById(`step-${s}`);
+    if (el) {
+      el.classList.remove('active', 'done');
+      el.querySelector('.step-icon').textContent = STEPS.indexOf(s) + 1;
+    }
+  });
+  document.getElementById('log-box').textContent = '';
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-pct').textContent = '0%';
+}
+
+/* ───────────────────────────────────────────────────────
+   結果表示
+─────────────────────────────────────────────────────── */
+function showResults(job) {
+  const panel = document.getElementById('results-panel');
+  panel.classList.add('visible');
+  document.getElementById('result-count').textContent = `${job.clips.length}本の切り抜きが生成されました`;
+  const list = document.getElementById('clips-list');
+  list.innerHTML = '';
+
+  job.clips.forEach((clip, i) => {
+    const dur = `${Math.floor(clip.duration/60)}分${Math.floor(clip.duration%60)}秒`;
+    const youtubeBtn = clip.youtube_url
+      ? `<a href="${clip.youtube_url}" target="_blank" class="btn btn-success btn-sm">YouTubeで見る</a>`
+      : '';
+    const schedBadge = clip.scheduled_at
+      ? `<span class="badge badge-pending">予約: ${new Date(clip.scheduled_at).toLocaleString('ja')}</span>`
+      : (clip.youtube_url ? `<span class="badge badge-success">公開済</span>` : '');
+    const card = document.createElement('div');
+    card.className = 'clip-card fade-in';
+    card.innerHTML = `
+      <div class="clip-thumb">
+        ${clip.thumbnail_url
+          ? `<img src="${clip.thumbnail_url}" alt="">`
+          : `<div style="width:100%;height:100%;background:#111;display:flex;align-items:center;justify-content:center;color:#555;font-size:12px;">No thumb</div>`}
+      </div>
+      <div class="clip-info">
+        <div class="clip-title">${clip.title}</div>
+        <div class="clip-meta">
+          <span>⏱ ${dur}</span>
+          <span>📊 ${clip.file_size_mb.toFixed(1)}MB</span>
+          <span class="badge badge-score">スコア ${clip.score.toFixed(2)}</span>
+          ${schedBadge}
+        </div>
+        <div class="clip-actions">
+          <a href="/api/jobs/${job.id}/download/${clip.filename}" class="btn btn-outline btn-sm">⬇ ダウンロード</a>
+          ${youtubeBtn}
+        </div>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+/* ───────────────────────────────────────────────────────
+   履歴
+─────────────────────────────────────────────────────── */
+async function loadHistory() {
+  const res = await fetch('/api/jobs');
+  const jobs = await res.json();
+  const list = document.getElementById('history-list');
+  list.innerHTML = '';
+  if (jobs.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:14px;padding:20px 0;">まだ処理履歴がありません</div>';
+    return;
+  }
+  jobs.forEach(job => {
+    const row = document.createElement('div');
+    row.className = 'history-row';
+    const statusCls = `status-${job.status}`;
+    const date = new Date(job.created_at).toLocaleString('ja');
+    row.innerHTML = `
+      <div class="history-status ${statusCls}"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${job.video_title || job.url}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${date} · ${job.clips.length}本</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">${job.progress}%</div>
+    `;
+    row.onclick = () => {
+      showPage('main');
+      if (job.status === 'completed') showResults(job);
+    };
+    list.appendChild(row);
+  });
+}
+
+/* ───────────────────────────────────────────────────────
+   初期化
+─────────────────────────────────────────────────────── */
+updateSummary();
+</script>
+</body>
+</html>

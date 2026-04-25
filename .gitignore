@@ -1,0 +1,28 @@
+# 環境変数・認証情報（絶対にコミットしない）
+.env
+client_secrets.json
+youtube_token.pickle
+
+# 一時ファイル・出力ファイル
+temp/
+output/
+*.wav
+*.mp4
+*.mkv
+*.webm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Whisperモデルキャッシュ
+.cache/
+
+# IDE
+.cursor/
+.vscode/
+*.idea/

@@ -1,0 +1,75 @@
+# ==============================
+# 切り抜き動画自動生成 設定ファイル
+# ==============================
+
+# 切り抜き設定
+clip:
+  # デフォルトの切り抜き時間 (秒)
+  default_duration_min: 60    # 最短60秒
+  default_duration_max: 600   # 最長10分
+  # 一つの動画から作成する切り抜き数 (0で自動判断)
+  clips_per_video: 3
+  # 切り抜き開始・終了のフェードイン/アウト秒数
+  fade_duration: 0.5
+  # 動画フォーマット
+  output_format: mp4
+  # 動画品質 (CRF値: 低いほど高品質, 18-28推奨)
+  video_crf: 18
+  # 動画コーデック
+  video_codec: libx264
+  # 音声コーデック
+  audio_codec: aac
+  # 音声ビットレート
+  audio_bitrate: "192k"
+
+# 分析設定
+analysis:
+  # GPTへの分析指示 (Prompt)
+  # {transcript} に文字起こしテキスト, {duration} に動画長が入る
+  system_prompt: |
+    あなたはYouTube動画の切り抜き専門家です。
+    提供された動画の文字起こしを分析し、視聴者が最も興味を持ちそうな
+    ハイライトシーンを特定してください。
+    盛り上がり、重要な情報、感情的なシーン、笑いどころなどを重視してください。
+  # 切り抜き候補の最大数
+  max_candidates: 10
+  # 最低スコア閾値 (0.0〜1.0)
+  min_score_threshold: 0.6
+
+# YouTube アップロード設定
+upload:
+  # デフォルトのプライバシー設定: public, private, unlisted
+  default_privacy: private
+  # カテゴリID (22=People&Blogs, 24=Entertainment, 28=Science&Technology)
+  category_id: "22"
+  # デフォルトの言語
+  default_language: ja
+  # タグの最大数
+  max_tags: 15
+  # 概要欄のフッター (全動画に追加される固定テキスト)
+  description_footer: |
+
+    ---
+    ※この動画は元動画から自動生成された切り抜きです。
+  # サムネイル画像を自動生成するか (現在は動画の特定フレームを使用)
+  auto_thumbnail: true
+  # サムネイル取得タイミング (切り抜き開始から何秒後のフレームを使うか)
+  thumbnail_offset_seconds: 3
+
+# Whisper 文字起こし設定
+transcription:
+  # 言語 (ja=日本語, en=英語, None=自動検出)
+  language: ja
+  # タイムスタンプの精度: word (単語単位) or segment (文節単位)
+  timestamp_granularity: segment
+  # 無音部分をスキップするか
+  vad_filter: true
+
+# ダウンロード設定
+download:
+  # ダウンロードディレクトリ
+  temp_dir: temp
+  # ダウンロード後に元動画を削除するか
+  keep_original: false
+  # ダウンロードタイムアウト (秒)
+  timeout: 3600

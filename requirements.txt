@@ -1,0 +1,31 @@
+# WebサーバーAPI
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# YouTube動画ダウンロード
+yt-dlp>=2024.1.0
+
+# 動画・音声処理
+ffmpeg-python>=0.2.0
+
+# 文字起こし (faster-whisper: CPU/GPU対応の高速Whisper実装)
+faster-whisper>=1.0.0
+
+# OpenAI API (GPT-4による分析・メタデータ生成)
+openai>=1.30.0
+
+# YouTube Data API v3
+google-api-python-client>=2.130.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# 設定・ユーティリティ
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+click>=8.1.7
+rich>=13.7.0
+tqdm>=4.66.0
+
+# 日時処理
+python-dateutil>=2.9.0
