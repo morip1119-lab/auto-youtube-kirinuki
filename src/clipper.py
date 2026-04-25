@@ -175,28 +175,35 @@ class VideoCutter:
         vf_parts = []
 
         if is_vertical:
-            # 横動画を縦(9:16)にリフレーム: 中央クロップ
-            # 元が16:9 (1920x1080) → 縦にすると 607x1080 を上下黒帯で1080x1920に
+            # 横動画を縦(9:16)にリフレーム
+            # step1: 幅1080に縮小（高さは自動・偶数保証）
+            # step2: 1080x1920にパディング（上下に黒帯）
+            # step3: setsar=1でアスペクト比メタデータを確定
             vf_parts.append(
-                "scale=1080:1920:force_original_aspect_ratio=decrease,"
-                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black"
+                "scale=1080:-2:flags=lanczos,"
+                "pad=1080:1920:0:(1920-ih)/2:black,"
+                "setsar=1"
             )
         else:
-            # 横動画はそのまま (念のためスケール)
-            vf_parts.append("scale=1920:1080:force_original_aspect_ratio=decrease")
+            # 横動画: 1920x1080に揃える
+            vf_parts.append(
+                "scale=1920:-2:flags=lanczos,"
+                "pad=1920:1080:(1920-iw)/2:0:black,"
+                "setsar=1"
+            )
 
         # タイトルオーバーレイ (drawtext)
         if title_text:
             safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
             if is_vertical:
-                # 縦動画: 上部中央に表示
+                # 縦動画: 上部から1/8の位置（約240px）に表示
                 drawtext = (
                     f"drawtext=text='{safe_text}'"
                     ":fontsize=52"
                     ":fontcolor=white"
                     ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
                     ":x=(w-text_w)/2"
-                    ":y=80"
+                    ":y=h/8"
                     ":box=1:boxcolor=black@0.6:boxborderw=12"
                 )
             else:
