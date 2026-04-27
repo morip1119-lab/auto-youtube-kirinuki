@@ -7,10 +7,11 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, HttpUrl
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ load_dotenv()
 from .job_manager import job_manager, JobStatus, BatchVideoItem
 from .pipeline import run_pipeline
 from .batch_pipeline import run_batch_pipeline
+from .auth import verify_token, make_token, password_configured, COOKIE_NAME
 
 app = FastAPI(title="YouTube切り抜きツール", version="1.0.0")
 
@@ -28,6 +30,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── 認証ミドルウェア ─────────────────────────────────────────────────
+_OPEN_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/static"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not password_configured():
+            return await call_next(request)
+
+        path = request.url.path
+        # WebSocket は Cookie ヘッダーで判定
+        if any(path.startswith(p) for p in _OPEN_PATHS):
+            return await call_next(request)
+
+        token = request.cookies.get(COOKIE_NAME, "")
+        if not verify_token(token):
+            if path.startswith("/ws/"):
+                # WebSocket は 403 で終了
+                from starlette.responses import PlainTextResponse
+                return PlainTextResponse("Unauthorized", status_code=403)
+            next_url = request.url.path
+            return RedirectResponse(url=f"/login?next={next_url}", status_code=302)
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
 
 # 静的ファイル・出力ファイルの配信
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -55,6 +82,40 @@ class JobCreateRequest(BaseModel):
 
 
 # ── API エンドポイント ────────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    html_path = Path("templates/login.html")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest, response: Response):
+    if not password_configured():
+        response.set_cookie(COOKIE_NAME, "no-password", httponly=True, samesite="lax")
+        return {"ok": True}
+    token = make_token(req.password)
+    if not verify_token(token):
+        raise HTTPException(401, "パスワードが違います")
+    response.set_cookie(
+        COOKIE_NAME, token,
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 30,  # 30日
+    )
+    return {"ok": True}
+
+
+@app.get("/api/auth/logout")
+async def logout():
+    resp = RedirectResponse(url="/login", status_code=302)
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ログイン — YouTube 切り抜きツール</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --border: #2e2e3e;
+      --accent: #7c6ff7;
+      --accent-light: #9d98ff;
+      --text: #e8e8f0;
+      --text-muted: #8888aa;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+    body {
+      font-family: 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .logo svg { color: var(--accent-light); }
+    .logo span { font-size: 18px; font-weight: 700; color: var(--accent-light); }
+    h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 28px; }
+    label { display: block; font-size: 12px; color: var(--text-muted); font-weight: 600;
+            letter-spacing: .5px; text-transform: uppercase; margin-bottom: 8px; }
+    input[type="password"] {
+      width: 100%;
+      background: #22222f;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 15px;
+      font-family: inherit;
+      transition: border-color .2s;
+      margin-bottom: 20px;
+    }
+    input[type="password"]:focus { outline: none; border-color: var(--accent); }
+    button {
+      width: 100%;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+    button:hover { background: var(--accent-light); }
+    .error {
+      background: rgba(239,68,68,.1);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      font-size: 13px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error.visible { display: block; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+      <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <span>YouTube 切り抜きツール</span>
+  </div>
+  <h2>ログイン</h2>
+  <p class="sub">パスワードを入力してください</p>
+  <div class="error" id="error-msg">パスワードが間違っています</div>
+  <form id="login-form">
+    <label for="password">パスワード</label>
+    <input type="password" id="password" name="password" autofocus placeholder="••••••••" />
+    <button type="submit">ログイン</button>
+  </form>
+</div>
+<script>
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById('password').value;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (res.ok) {
+      const params = new URLSearchParams(location.search);
+      location.href = params.get('next') || '/';
+    } else {
+      document.getElementById('error-msg').classList.add('visible');
+      document.getElementById('password').value = '';
+      document.getElementById('password').focus();
+    }
+  });
+</script>
+</body>
+</html>
