@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: auto-youtube-kirinuki
+    runtime: docker
+    plan: standard          # 2GB RAM / $25/月 (Whisperに必要)
+    # plan: starter         # 512MB / $7/月 (tinyモデルのみ動作)
+    healthCheckPath: /login
+    envVars:
+      - key: APP_PASSWORD
+        sync: false         # Renderのダッシュボードで設定
+      - key: APP_SECRET_KEY
+        generateValue: true # 自動生成
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: WHISPER_MODEL
+        value: small
+      - key: WHISPER_DEVICE
+        value: cpu
+      - key: MAX_VIDEO_HEIGHT
+        value: "1080"
+      - key: OUTPUT_DIR
+        value: /data/output
+      - key: YOUTUBE_CLIENT_SECRETS_FILE
+        value: /data/client_secrets.json
+      - key: YOUTUBE_TOKEN_FILE
+        value: /data/youtube_token.pickle
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 10

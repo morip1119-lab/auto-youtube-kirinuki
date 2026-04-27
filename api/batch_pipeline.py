@@ -32,8 +32,8 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
     whisper_model = settings.get("whisper_model", os.environ.get("WHISPER_MODEL", "small"))
     whisper_device = settings.get("device", os.environ.get("WHISPER_DEVICE", "cpu"))
     max_height = int(os.environ.get("MAX_VIDEO_HEIGHT", 1080))
-    temp_dir = "temp"
-    output_dir = "output"
+    temp_dir = os.environ.get("TEMP_DIR", "temp")
+    output_dir = os.environ.get("OUTPUT_DIR", "output")
     client_secrets = os.environ.get("YOUTUBE_CLIENT_SECRETS_FILE", "client_secrets.json")
 
     clips_count = settings.get("clips_count", 3)

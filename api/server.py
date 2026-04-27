@@ -56,9 +56,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AuthMiddleware)
 
-# 静的ファイル・出力ファイルの配信
+# 出力・静的ファイルのディレクトリ (環境変数で上書き可能)
+_OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "output")
+Path(_OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+Path("static").mkdir(parents=True, exist_ok=True)
+Path("temp").mkdir(parents=True, exist_ok=True)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/output", StaticFiles(directory="output"), name="output")
+app.mount("/output", StaticFiles(directory=_OUTPUT_DIR), name="output")
 
 
 # ── リクエストモデル ──────────────────────────────────────────────────
