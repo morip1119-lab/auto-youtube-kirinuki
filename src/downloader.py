@@ -65,6 +65,9 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
+            "format": "best",
+            "check_formats": False,
+            "ignore_no_formats_error": True,
         })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
