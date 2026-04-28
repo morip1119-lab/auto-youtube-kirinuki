@@ -363,10 +363,12 @@ class VideoCutter:
             f"pad=1080:1920:0:{VIDEO_Y}:black,setsar=1[canvas]"
         )
 
-        # サムネイルを下部エリア(1080×THUMB_H)にフィル（高さ基準でスケール → 幅センタークロップ）
+        # サムネイルを下部エリア(1080×THUMB_H)に収める
+        # force_original_aspect_ratio=decrease で幅1080・高さTHUMB_H に収まるよう縮小し
+        # 不足する辺を黒でパディングしてセンタリング
         fc.append(
-            f"[1:v]scale=-2:{THUMB_H}:flags=lanczos,"
-            f"crop=1080:{THUMB_H}:(iw-1080)/2:0,setsar=1[thumb_v]"
+            f"[1:v]scale=1080:{THUMB_H}:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad=1080:{THUMB_H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[thumb_v]"
         )
 
         # サムネイルを下部に合成
