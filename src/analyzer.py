@@ -50,7 +50,7 @@ class VideoAnalyzer:
         clips_per_video: int = 3,
         min_clip_duration: int = 60,
         max_clip_duration: int = 600,
-        min_score: float = 0.6,
+        min_score: float = 0.4,
     ):
         self.client = OpenAI(api_key=openai_api_key)
         self.model = model
@@ -151,39 +151,47 @@ class VideoAnalyzer:
             console.print(f"[red]GPT分析エラー: {e}[/red]")
             return []
 
-        candidates = []
-        for clip in raw_clips:
-            start = float(clip.get("start_seconds", 0))
-            end = float(clip.get("end_seconds", 0))
-            duration = end - start
-            score = float(clip.get("score", 0))
-
-            # バリデーション
-            if duration < min_dur * 0.8:
-                console.print(
-                    f"[yellow]スキップ: 短すぎる ({duration:.0f}秒) [{int(start//60)}:{int(start%60):02d}〜][/yellow]"
-                )
-                continue
-            if duration > max_dur * 1.2:
-                # 長すぎる場合は末尾をカット
-                end = start + max_dur
-                duration = max_dur
-            if score < self.min_score:
-                continue
-            if end > total_duration:
-                end = total_duration
+        def _build_candidates(clips: list, score_threshold: float) -> list:
+            result = []
+            for clip in clips:
+                start = float(clip.get("start_seconds", 0))
+                end = float(clip.get("end_seconds", 0))
                 duration = end - start
+                score = float(clip.get("score", 0))
 
-            candidate = ClipCandidate(
-                start=start,
-                end=end,
-                duration=duration,
-                score=score,
-                reason=clip.get("reason", ""),
-                suggested_title=clip.get("suggested_title", "切り抜き"),
-                keywords=clip.get("keywords", []),
-            )
-            candidates.append(candidate)
+                if duration < min_dur * 0.5:
+                    console.print(
+                        f"[yellow]スキップ: 短すぎる ({duration:.0f}秒)[/yellow]"
+                    )
+                    continue
+                if duration > max_dur * 1.2:
+                    end = start + max_dur
+                    duration = max_dur
+                if score < score_threshold:
+                    continue
+                if end > total_duration:
+                    end = total_duration
+                    duration = end - start
+                if duration <= 0:
+                    continue
+
+                result.append(ClipCandidate(
+                    start=start,
+                    end=end,
+                    duration=duration,
+                    score=score,
+                    reason=clip.get("reason", ""),
+                    suggested_title=clip.get("suggested_title", "切り抜き"),
+                    keywords=clip.get("keywords", []),
+                ))
+            return result
+
+        # スコア閾値を段階的に下げてフォールバック
+        candidates = _build_candidates(raw_clips, self.min_score)
+        if not candidates:
+            candidates = _build_candidates(raw_clips, 0.3)
+        if not candidates:
+            candidates = _build_candidates(raw_clips, 0.0)
 
         # スコア順にソートして重複除去
         candidates.sort(key=lambda x: x.score, reverse=True)
