@@ -1574,7 +1574,6 @@ async function fetchChannelVideos() {
     if (!res.ok) throw new Error((await res.json()).detail);
     let videos = await res.json();
     // ソート適用
-    const sortOrder = document.getElementById('batch-sort-order').value;
     if (sortOrder === 'newest') {
       videos.sort((a, b) => (b.upload_date || '').localeCompare(a.upload_date || ''));
     } else if (sortOrder === 'oldest') {
