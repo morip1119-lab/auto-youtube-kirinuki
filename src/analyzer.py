@@ -151,11 +151,30 @@ class VideoAnalyzer:
             console.print(f"[red]GPT分析エラー: {e}[/red]")
             return []
 
+        def _parse_time(clip: dict, *keys) -> float:
+            """複数のキー名 / MM:SS形式 / 数値をまとめてパース"""
+            for k in keys:
+                v = clip.get(k)
+                if v is None:
+                    continue
+                try:
+                    # "MM:SS" or "HH:MM:SS" 形式を秒に変換
+                    if isinstance(v, str) and ":" in v:
+                        parts = v.split(":")
+                        secs = 0.0
+                        for p in parts:
+                            secs = secs * 60 + float(p)
+                        return secs
+                    return float(v)
+                except (ValueError, TypeError):
+                    continue
+            return 0.0
+
         def _build_candidates(clips: list, score_threshold: float) -> list:
             result = []
             for clip in clips:
-                start = float(clip.get("start_seconds", 0))
-                end = float(clip.get("end_seconds", 0))
+                start = _parse_time(clip, "start_seconds", "start", "start_time", "startSeconds")
+                end   = _parse_time(clip, "end_seconds",   "end",   "end_time",   "endSeconds")
                 duration = end - start
                 score = float(clip.get("score", 0))
 
