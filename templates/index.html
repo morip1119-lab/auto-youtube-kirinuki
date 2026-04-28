@@ -1666,8 +1666,18 @@ async function fetchChannelVideos() {
     if (dateFrom) apiUrl += `&date_from=${dateFrom}`;
     if (dateTo)   apiUrl += `&date_to=${dateTo}`;
 
-    const res = await fetch(apiUrl);
-    if (!res.ok) throw new Error((await res.json()).detail);
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 240000);
+    const res = await fetch(apiUrl, { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!res.ok) {
+      let msg = res.statusText || 'エラー';
+      try {
+        const j = await res.json();
+        msg = j.detail || msg;
+      } catch (_) {}
+      throw new Error(msg);
+    }
     let videos = await res.json();
     // ソート適用
     if (sortOrder === 'newest') {
@@ -1680,7 +1690,10 @@ async function fetchChannelVideos() {
     batchState.fetchedVideos = videos;
     renderBatchVideoList(videos);
   } catch (e) {
-    alert('動画リストの取得に失敗しました: ' + e.message);
+    const msg = e.name === 'AbortError'
+      ? 'タイムアウトしました（チャンネルが大きい場合は期間を狭めるか取得件数を減らしてください）'
+      : e.message;
+    alert('動画リストの取得に失敗しました: ' + msg);
   } finally {
     btn.disabled = false;
     btn.textContent = '動画リストを取得';

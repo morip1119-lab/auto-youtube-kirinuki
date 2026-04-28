@@ -203,13 +203,14 @@ class YouTubeDownloader:
         # ─────────────────────────────────────────────────────────────────
         if has_date_filter:
             # daterange フィルターを yt-dlp に渡して確実に絞り込む
-            # playlistend は大きめにして期間内の動画を取り漏らさないようにする
+            # playlistend は大きめだが2000だと初回抽出が極端に遅くタイムアウトしやすい
             ydl_opts: dict = {
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": "in_playlist",
-                "playlistend": min(max_videos * 20, 2000),
+                "playlistend": min(max(200, max_videos * 15), 800),
                 "ignoreerrors": True,
+                "socket_timeout": 30,
             }
             try:
                 ydl_opts["daterange"] = yt_dlp.utils.DateRange(
@@ -225,11 +226,14 @@ class YouTubeDownloader:
                 "extract_flat": "in_playlist",
                 "playlistend": max_videos,
                 "ignoreerrors": True,
+                "socket_timeout": 30,
             }
 
         videos: list[VideoInfo] = []
         channel_title_fallback = ""
         channel_id_fallback    = ""
+        extra_meta_fetches = 0
+        extra_meta_limit = max(80, max_videos * 4)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(base_url, download=False)
@@ -243,10 +247,15 @@ class YouTubeDownloader:
                 video_id    = entry.get("id", "")
                 upload_date = (entry.get("upload_date") or "").strip()
 
-                # extract_flat で upload_date が取れなかった場合: 個別取得
-                if has_date_filter and not upload_date and video_id:
+                # extract_flat で upload_date が取れなかった場合: 個別取得（件数上限あり）
+                if has_date_filter and not upload_date and video_id and extra_meta_fetches < extra_meta_limit:
                     try:
-                        single_opts = {"quiet": True, "no_warnings": True}
+                        extra_meta_fetches += 1
+                        single_opts = {
+                            "quiet": True,
+                            "no_warnings": True,
+                            "socket_timeout": 20,
+                        }
                         with yt_dlp.YoutubeDL(single_opts) as ydl2:
                             full = ydl2.extract_info(
                                 f"https://www.youtube.com/watch?v={video_id}",
@@ -258,15 +267,16 @@ class YouTubeDownloader:
                     except Exception:
                         pass
 
-                # 手動日付フィルター（daterange が効かない場合の保険 + 個別取得分）
+                # 手動日付フィルター（個別取得で日付が取れた場合）
                 if has_date_filter and upload_date:
                     if date_from_ydl and upload_date < date_from_ydl:
                         continue
                     if date_to_ydl and upload_date > date_to_ydl:
                         continue
                 elif has_date_filter and not upload_date:
-                    # 日付が取れなかったものは除外（フィルター結果の精度を守る）
-                    continue
+                    # プレイリストは yt-dlp の daterange で既に期間内に絞られている。
+                    # flat 抽出では upload_date が空のことが多いが、そのまま除外すると0件になりがちなので採用する。
+                    pass
 
                 thumb = (
                     entry.get("thumbnail")
