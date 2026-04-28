@@ -187,7 +187,11 @@ async def get_video_info(url: str):
             "video_id": info.video_id,
         }
     except Exception as e:
-        raise HTTPException(400, f"動画情報の取得に失敗しました: {e}")
+        msg = str(e)
+        hint = ""
+        if "Sign in to confirm" in msg or "not a bot" in msg:
+            hint = " VPS では YOUTUBE_COOKIES_FILE（Netscape形式の cookies.txt）の設定が必要なことがあります。.env.example を参照してください。"
+        raise HTTPException(400, f"動画情報の取得に失敗しました: {msg}{hint}")
 
 
 @app.get("/api/channel-videos")
@@ -226,7 +230,11 @@ async def get_channel_videos(
             for v in videos
         ]
     except Exception as e:
-        raise HTTPException(400, f"チャンネル動画リストの取得に失敗しました: {e}")
+        msg = str(e)
+        hint = ""
+        if "Sign in to confirm" in msg or "not a bot" in msg:
+            hint = " VPS では YOUTUBE_COOKIES_FILE（Netscape形式）の設定が必要なことがあります。"
+        raise HTTPException(400, f"チャンネル動画リストの取得に失敗しました: {msg}{hint}")
 
 
 class BatchJobCreateRequest(BaseModel):

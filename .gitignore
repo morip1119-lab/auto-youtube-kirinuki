@@ -2,6 +2,8 @@
 .env
 client_secrets.json
 youtube_token.pickle
+youtube_cookies.txt
+cookies.txt
 
 # 一時ファイル・出力ファイル
 temp/

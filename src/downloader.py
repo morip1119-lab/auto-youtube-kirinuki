@@ -14,6 +14,26 @@ from rich.console import Console
 console = Console()
 
 
+def _cookie_file_opts() -> dict:
+    """YouTube がボット検出する環境では Netscape 形式の cookies ファイルが必要なことがあります。
+
+    環境変数 YOUTUBE_COOKIES_FILE または YT_DLP_COOKIES_FILE にパスを指定。
+    """
+    raw = os.environ.get("YOUTUBE_COOKIES_FILE") or os.environ.get("YT_DLP_COOKIES_FILE")
+    if not raw:
+        return {}
+    p = Path(raw).expanduser()
+    if not p.is_file():
+        return {}
+    return {"cookiefile": str(p.resolve())}
+
+
+def _with_cookies(opts: dict) -> dict:
+    merged = dict(opts)
+    merged.update(_cookie_file_opts())
+    return merged
+
+
 @dataclass
 class VideoInfo:
     """動画情報を保持するデータクラス"""
@@ -41,11 +61,11 @@ class YouTubeDownloader:
 
     def get_video_info(self, url: str) -> VideoInfo:
         """動画情報のみ取得（ダウンロードなし）"""
-        ydl_opts = {
+        ydl_opts = _with_cookies({
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
-        }
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -78,7 +98,7 @@ class YouTubeDownloader:
         console.print(f"[cyan]動画をダウンロード中: {info.title}[/cyan]")
         console.print(f"  長さ: {info.duration // 60}分{info.duration % 60}秒")
 
-        ydl_opts = {
+        ydl_opts = _with_cookies({
             "format": f"bestvideo[height<={self.max_height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={self.max_height}]+bestaudio/best[height<={self.max_height}]/best",
             "outtmpl": str(self.output_dir / f"{vid}.%(ext)s"),
             "merge_output_format": "mp4",
@@ -91,7 +111,7 @@ class YouTubeDownloader:
             "quiet": False,
             "no_warnings": True,
             "progress_hooks": [self._progress_hook],
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -120,7 +140,7 @@ class YouTubeDownloader:
 
         console.print(f"[cyan]音声をダウンロード中 (文字起こし用)...[/cyan]")
 
-        ydl_opts = {
+        ydl_opts = _with_cookies({
             "format": "bestaudio/best",
             "outtmpl": str(self.output_dir / f"{vid}_audio.%(ext)s"),
             "postprocessors": [
@@ -132,7 +152,7 @@ class YouTubeDownloader:
             ],
             "quiet": True,
             "no_warnings": True,
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -204,14 +224,14 @@ class YouTubeDownloader:
         if has_date_filter:
             # daterange フィルターを yt-dlp に渡して確実に絞り込む
             # playlistend は大きめだが2000だと初回抽出が極端に遅くタイムアウトしやすい
-            ydl_opts: dict = {
+            ydl_opts: dict = _with_cookies({
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": "in_playlist",
                 "playlistend": min(max(200, max_videos * 15), 800),
                 "ignoreerrors": True,
                 "socket_timeout": 30,
-            }
+            })
             try:
                 ydl_opts["daterange"] = yt_dlp.utils.DateRange(
                     date_from_ydl or None,
@@ -220,14 +240,14 @@ class YouTubeDownloader:
             except Exception:
                 pass
         else:
-            ydl_opts = {
+            ydl_opts = _with_cookies({
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": "in_playlist",
                 "playlistend": max_videos,
                 "ignoreerrors": True,
                 "socket_timeout": 30,
-            }
+            })
 
         videos: list[VideoInfo] = []
         channel_title_fallback = ""
@@ -251,11 +271,11 @@ class YouTubeDownloader:
                 if has_date_filter and not upload_date and video_id and extra_meta_fetches < extra_meta_limit:
                     try:
                         extra_meta_fetches += 1
-                        single_opts = {
+                        single_opts = _with_cookies({
                             "quiet": True,
                             "no_warnings": True,
                             "socket_timeout": 20,
-                        }
+                        })
                         with yt_dlp.YoutubeDL(single_opts) as ydl2:
                             full = ydl2.extract_info(
                                 f"https://www.youtube.com/watch?v={video_id}",
