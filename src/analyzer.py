@@ -95,8 +95,13 @@ class VideoAnalyzer:
         if len(timestamped_text) > 60000:
             timestamped_text = timestamped_text[:60000] + "\n... (以下省略)"
 
-        system_prompt = """あなたはYouTube動画の切り抜き専門家です。
+        system_prompt = f"""あなたはYouTube動画の切り抜き専門家です。
 動画の文字起こしを分析して、視聴者が最も興味を持つハイライトシーンを特定してください。
+
+【重要】各クリップは必ず {min_dur}秒以上 {max_dur}秒以下の長さにしてください。
+start_seconds と end_seconds の差が {min_dur} 以上になるよう設定してください。
+例: start_seconds=120, end_seconds=180 → 60秒のクリップ ✓
+例: start_seconds=120, end_seconds=122 → 2秒のクリップ ✗（絶対に禁止）
 
 以下の基準で評価してください：
 - 盛り上がり・感情的な瞬間（笑い、驚き、感動）
@@ -106,18 +111,18 @@ class VideoAnalyzer:
 - 物語の転換点・クライマックス
 
 必ず以下のJSON形式で回答してください（他のテキストは不要）：
-{
+{{
   "clips": [
-    {
-      "start_seconds": 開始秒数（数値）,
-      "end_seconds": 終了秒数（数値）,
+    {{
+      "start_seconds": 開始秒数（整数）,
+      "end_seconds": 終了秒数（整数、start_secondsより必ず{min_dur}以上大きい値）,
       "score": 重要度スコア（0.0〜1.0の数値）,
       "reason": "選定理由（日本語）",
       "suggested_title": "切り抜きタイトル案（日本語・30文字以内）",
       "keywords": ["キーワード1", "キーワード2", "キーワード3"]
-    }
+    }}
   ]
-}"""
+}}"""
 
         user_prompt = f"""以下の動画を分析して、切り抜き候補を{self.clips_per_video}個程度提案してください。
 
@@ -125,9 +130,9 @@ class VideoAnalyzer:
 【動画説明】{video_description[:500] if video_description else "なし"}
 【動画長】{int(total_duration // 60)}分{int(total_duration % 60)}秒
 
-【制約条件】
-- 各切り抜きの長さ: {min_dur}秒〜{max_dur}秒
-- スコアが{self.min_score}以上のものだけを提案
+【制約条件（必ず守ること）】
+- 各切り抜きの長さ: 必ず{min_dur}秒以上{max_dur}秒以下
+- end_seconds - start_seconds >= {min_dur} を厳守
 - 切り抜き同士が重複しないようにする
 
 【文字起こし（タイムスタンプ付き）】
@@ -178,11 +183,15 @@ class VideoAnalyzer:
                 duration = end - start
                 score = float(clip.get("score", 0))
 
+                # 短すぎる場合は捨てずに中心を保ったまま min_dur に延長
                 if duration < min_dur * 0.5:
+                    mid = (start + end) / 2 if end > start else start
+                    start = max(0, mid - min_dur / 2)
+                    end   = start + min_dur
+                    duration = min_dur
                     console.print(
-                        f"[yellow]スキップ: 短すぎる ({duration:.0f}秒)[/yellow]"
+                        f"[yellow]短いクリップを延長: {duration:.0f}秒 → {min_dur}秒[/yellow]"
                     )
-                    continue
                 if duration > max_dur * 1.2:
                     end = start + max_dur
                     duration = max_dur
