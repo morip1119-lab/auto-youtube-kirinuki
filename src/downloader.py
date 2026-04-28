@@ -28,9 +28,24 @@ def _cookie_file_opts() -> dict:
     return {"cookiefile": str(p.resolve())}
 
 
+def _base_opts() -> dict:
+    """ボット検出を回避するための基本オプション。
+    Android クライアントを優先し、Cookie ファイルがあれば追加する。
+    """
+    opts: dict = {
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+            }
+        },
+    }
+    opts.update(_cookie_file_opts())
+    return opts
+
+
 def _with_cookies(opts: dict) -> dict:
     merged = dict(opts)
-    merged.update(_cookie_file_opts())
+    merged.update(_base_opts())
     return merged
 
 

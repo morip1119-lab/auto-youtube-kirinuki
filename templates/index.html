@@ -692,6 +692,16 @@
           </div>
           <button class="btn btn-outline btn-sm" onclick="reauth()" id="reauth-btn">再認証</button>
         </div>
+        <div class="toggle-row" style="margin-bottom:14px;">
+          <div>
+            <div>YouTube Cookie</div>
+            <div class="sub">ボット検出が出た場合にcookies.txtをアップロード</div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="file" id="cookie-file-input" accept=".txt" style="display:none" onchange="uploadCookieFile(this)">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('cookie-file-input').click()">Cookie更新</button>
+          </label>
+        </div>
 
         <div class="upload-section" id="upload-section">
           <div class="form-group">
@@ -932,6 +942,16 @@
               <div class="sub" id="batch-auth-status-label">認証状態を確認中...</div>
             </div>
             <button class="btn btn-outline btn-sm" onclick="reauth()">再認証</button>
+          </div>
+          <div class="toggle-row" style="margin-bottom:14px;">
+            <div>
+              <div>YouTube Cookie</div>
+              <div class="sub">ボット検出が出た場合にcookies.txtをアップロード</div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="file" id="batch-cookie-file-input" accept=".txt" style="display:none" onchange="uploadCookieFile(this)">
+              <button class="btn btn-outline btn-sm" onclick="document.getElementById('batch-cookie-file-input').click()">Cookie更新</button>
+            </label>
           </div>
           <div id="batch-upload-section" class="upload-section">
             <div class="form-group">
@@ -1966,6 +1986,25 @@ async function checkAuthStatus() {
       if (el) el.textContent = label;
     });
   } catch (_) {}
+}
+
+async function uploadCookieFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/cookies/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      alert('Cookie を更新しました。ファイル: ' + data.path);
+    } else {
+      alert('エラー: ' + (data.detail || JSON.stringify(data)));
+    }
+  } catch (e) {
+    alert('アップロードエラー: ' + e.message);
+  }
+  input.value = '';
 }
 
 async function reauth() {

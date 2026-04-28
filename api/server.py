@@ -7,7 +7,7 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -353,6 +353,17 @@ async def get_youtube_token_status():
     """YouTube認証済みかどうかを返す"""
     token_path = Path(os.environ.get("YOUTUBE_TOKEN_FILE", "youtube_token.pickle"))
     return {"authenticated": token_path.exists()}
+
+
+@app.post("/api/cookies/upload")
+async def upload_cookies(file: UploadFile = File(...)):
+    """cookies.txt をアップロードして YOUTUBE_COOKIES_FILE に保存する"""
+    cookie_path = Path(os.environ.get("YOUTUBE_COOKIES_FILE", "youtube_cookies.txt"))
+    cookie_path.parent.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    cookie_path.write_bytes(content)
+    os.environ["YOUTUBE_COOKIES_FILE"] = str(cookie_path)
+    return {"path": str(cookie_path), "size": len(content)}
 
 
 @app.get("/api/settings")
