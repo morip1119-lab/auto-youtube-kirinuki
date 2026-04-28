@@ -46,6 +46,8 @@ class VideoCutter:
         thumbnail_offset: int = 3,
         aspect_ratio: str = "16:9",   # "16:9" or "9:16"
         show_title: bool = True,       # タイトルオーバーレイ表示
+        thumbnail_mode: str = "auto",  # "auto" / "none" / "custom"
+        custom_thumbnail_path: Optional[str] = None,
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +61,8 @@ class VideoCutter:
         self.thumbnail_offset = thumbnail_offset
         self.aspect_ratio = aspect_ratio
         self.show_title = show_title
+        self.thumbnail_mode = thumbnail_mode
+        self.custom_thumbnail_path = Path(custom_thumbnail_path) if custom_thumbnail_path else None
 
     def cut_clip(
         self,
@@ -171,13 +175,21 @@ class VideoCutter:
         fade_out_start = max(0, duration - self.fade_duration)
         is_vertical = self.aspect_ratio == "9:16"
 
-        if is_vertical:
-            # 縦動画: サムネイル下部貼り付けを試みる
-            thumb_temp = output_path.with_name(output_path.stem + "_vthumb.jpg")
-            has_thumb = self._extract_frame(
-                video_path, start + min(2.0, duration / 2), thumb_temp
-            )
-            if has_thumb:
+        if is_vertical and self.thumbnail_mode != "none":
+            # 縦動画: サムネイル下部貼り付け
+            if self.thumbnail_mode == "custom" and self.custom_thumbnail_path and self.custom_thumbnail_path.exists():
+                thumb_temp = self.custom_thumbnail_path
+                cleanup_thumb = False
+            else:
+                # auto: 動画からフレーム抽出
+                thumb_temp = output_path.with_name(output_path.stem + "_vthumb.jpg")
+                has_thumb = self._extract_frame(
+                    video_path, start + min(2.0, duration / 2), thumb_temp
+                )
+                cleanup_thumb = True
+                if not has_thumb:
+                    thumb_temp = None
+            if thumb_temp:
                 try:
                     self._run_ffmpeg_vertical_with_thumb(
                         video_path, start, duration, output_path,
@@ -187,10 +199,11 @@ class VideoCutter:
                 except Exception:
                     pass  # サムネイル失敗時はフォールバック
                 finally:
-                    try:
-                        thumb_temp.unlink(missing_ok=True)
-                    except Exception:
-                        pass
+                    if cleanup_thumb:
+                        try:
+                            Path(thumb_temp).unlink(missing_ok=True)
+                        except Exception:
+                            pass
 
         # ─── 通常の vf ベース処理 ─────────────────────────────────────
         vf_parts = []

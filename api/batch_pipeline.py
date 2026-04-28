@@ -41,17 +41,19 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
     max_duration = settings.get("max_duration", 300)
     output_format = settings.get("output_format", "horizontal")
     show_title = settings.get("show_title", True)
+    thumbnail_mode = settings.get("thumbnail_mode", "auto")  # auto / none / custom
     privacy = settings.get("privacy", "private")
     do_upload = settings.get("do_upload", False)
     schedule_date = settings.get("schedule_date", None)
     posts_per_day = int(settings.get("posts_per_day", 1))
+    time_slots: list = settings.get("time_slots") or None
 
     total = len(batch_job.videos)
-    # 固定時刻スロットでスケジュールを生成
-    scheduled_times: Optional[list] = _resolve_schedule_fixed(
+    scheduled_times: Optional[list] = _resolve_schedule(
         schedule_date,
         total * clips_count,
         posts_per_day,
+        time_slots,
     )
     schedule_cursor = 0
 
@@ -168,6 +170,7 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
                     output_dir=output_dir,
                     aspect_ratio=aspect_ratio,
                     show_title=show_title,
+                    thumbnail_mode=thumbnail_mode,
                 )
                 clip_results = await loop.run_in_executor(
                     None, lambda: cutter.cut_all_clips(
@@ -293,36 +296,45 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
         print(traceback.format_exc())
 
 
-# 1日あたりの投稿時刻（JST固定）
-DAILY_SLOTS = {
-    1: [12],
-    2: [12, 18],
-    3: [12, 15, 18],
-}
-
-
-def _resolve_schedule_fixed(
+def _resolve_schedule(
     start_date: Optional[str],
     count: int,
     posts_per_day: int,
+    time_slots: Optional[list] = None,
 ) -> Optional[list]:
-    """投稿開始日と1日あたり投稿回数から固定時刻スケジュールを生成する"""
+    """投稿開始日・1日投稿本数・各スロット時刻からスケジュールを生成する。
+
+    time_slots: ["12:00", "18:00"] のような HH:MM 文字列リスト。
+                None の場合はデフォルト時刻を使用。
+    """
     if not start_date:
         return None
     try:
-        from datetime import date as date_cls
-        hours = DAILY_SLOTS.get(posts_per_day, [12])
+        # time_slots が未指定の場合デフォルト値を割り当て
+        default_hours = {
+            1: ["12:00"], 2: ["12:00", "18:00"], 3: ["10:00", "14:00", "18:00"],
+        }
+        slots = time_slots or default_hours.get(posts_per_day, ["12:00"])
+        # HH:MM → (hour, minute) に変換
+        parsed: list[tuple[int, int]] = []
+        for s in slots[:posts_per_day]:
+            parts = str(s).split(":")
+            h = int(parts[0]) if len(parts) > 0 else 12
+            m = int(parts[1]) if len(parts) > 1 else 0
+            parsed.append((h, m))
+
         base = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=JST)
         result = []
         day_offset = 0
         slot_idx = 0
         while len(result) < count:
+            h, m = parsed[slot_idx]
             dt = (base + timedelta(days=day_offset)).replace(
-                hour=hours[slot_idx], minute=0, second=0, microsecond=0
+                hour=h, minute=m, second=0, microsecond=0
             )
             result.append(dt.astimezone(timezone.utc))
             slot_idx += 1
-            if slot_idx >= len(hours):
+            if slot_idx >= len(parsed):
                 slot_idx = 0
                 day_offset += 1
         return result

@@ -616,6 +616,18 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label>縦動画の下部エリア</label>
+          <div class="seg-ctrl">
+            <button id="thumb-mode-auto" class="active" onclick="setThumbMode('auto')">自動（動画から）</button>
+            <button id="thumb-mode-custom" onclick="setThumbMode('custom')">画像を指定</button>
+            <button id="thumb-mode-none" onclick="setThumbMode('none')">なし</button>
+          </div>
+          <div id="thumb-upload-row" style="display:none;margin-top:8px;">
+            <input type="file" id="thumb-file" accept="image/*" style="width:100%;font-size:13px;">
+            <div class="sub" style="margin-top:4px;">縦動画の下部に表示する画像（JPG/PNG推奨）</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -859,6 +871,18 @@
             <label class="toggle"><input type="checkbox" id="batch-show-title" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="form-group" style="margin-top:14px;">
+            <label>縦動画の下部エリア</label>
+            <div class="seg-ctrl">
+              <button id="batch-thumb-auto" class="active" onclick="setBatchThumbMode('auto')">自動（動画から）</button>
+              <button id="batch-thumb-custom" onclick="setBatchThumbMode('custom')">画像を指定</button>
+              <button id="batch-thumb-none" onclick="setBatchThumbMode('none')">なし</button>
+            </div>
+            <div id="batch-thumb-upload-row" style="display:none;margin-top:8px;">
+              <input type="file" id="batch-thumb-file" accept="image/*" style="width:100%;font-size:13px;">
+              <div class="sub" style="margin-top:4px;">全動画共通で使用する画像（JPG/PNG推奨）</div>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:14px;">
             <label>Whisper モデル</label>
             <select id="batch-whisper-model">
               <option value="tiny">tiny – 最速・低精度</option>
@@ -905,18 +929,22 @@
             <div id="batch-schedule-section" style="display:none;margin-top:12px;">
               <div class="form-group">
                 <label>投稿開始日</label>
-                <input type="date" id="batch-schedule-date" class="date-input">
+                <input type="date" id="batch-schedule-date" class="date-input" oninput="updateBatchSchedulePreview()">
               </div>
               <div class="form-group">
-                <label>1日あたりの投稿回数</label>
-                <div class="seg-ctrl">
-                  <button class="active" id="batch-freq-1" onclick="setBatchFreq(1)">1回/日<br><small style="font-weight:400;opacity:.8;">12:00</small></button>
-                  <button id="batch-freq-2" onclick="setBatchFreq(2)">2回/日<br><small style="font-weight:400;opacity:.8;">12:00 / 18:00</small></button>
-                  <button id="batch-freq-3" onclick="setBatchFreq(3)">3回/日<br><small style="font-weight:400;opacity:.8;">12:00 / 15:00 / 18:00</small></button>
+                <label>1日の投稿本数 <span id="batch-ppd-val" style="color:var(--accent-light);font-weight:700;">1本</span></label>
+                <input type="range" id="batch-ppd-slider" min="1" max="10" value="1" step="1"
+                  oninput="onBatchPpdChange(+this.value)"
+                  style="width:100%;accent-color:var(--accent);margin-top:4px;">
+              </div>
+              <div class="form-group" id="batch-time-slots-group">
+                <label>各スロットの投稿時間</label>
+                <div id="batch-time-slots" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:6px;">
+                  <!-- JS で動的生成 -->
                 </div>
               </div>
-              <div class="alert alert-info" id="batch-schedule-preview" style="font-size:12px;">
-                投稿開始日から毎日12:00に1本ずつ自動公開されます
+              <div class="alert alert-info" id="batch-schedule-preview" style="font-size:12px;margin-top:10px;">
+                投稿開始日を選択してください
               </div>
             </div>
           </div>
@@ -1009,10 +1037,19 @@ const state = {
   clipMode: 'auto',
   device: 'cpu',
   privacy: 'private',
+  thumbMode: 'auto',
   currentJobId: null,
   ws: null,
   manualSegCount: 0,
 };
+
+function setThumbMode(mode) {
+  state.thumbMode = mode;
+  ['auto', 'custom', 'none'].forEach(m => {
+    document.getElementById(`thumb-mode-${m}`)?.classList.toggle('active', m === mode);
+  });
+  document.getElementById('thumb-upload-row').style.display = mode === 'custom' ? '' : 'none';
+}
 
 /* ───────────────────────────────────────────────────────
    ページ切り替え
@@ -1289,6 +1326,7 @@ async function startJob() {
     clip_mode: state.clipMode,
     manual_segments: manualSegments,
     show_title: document.getElementById('show-title').checked,
+    thumbnail_mode: state.thumbMode,
     whisper_model: document.getElementById('whisper-model').value,
     device: state.device,
     do_upload: doUpload,
@@ -1505,6 +1543,8 @@ const batchState = {
   outputFormat: 'horizontal',
   privacy: 'private',
   postsPerDay: 1,
+  timeSlots: ['12:00'],
+  thumbMode: 'auto',
   fetchedVideos: [],
   currentBatchJobId: null,
   ws: null,
@@ -1532,19 +1572,75 @@ function toggleBatchUploadSection() {
 function toggleBatchSchedule() {
   const enabled = document.getElementById('batch-use-schedule').checked;
   document.getElementById('batch-schedule-section').style.display = enabled ? '' : 'none';
+  if (enabled) {
+    // 初回表示時にスロットを描画
+    renderBatchTimeSlots();
+    updateBatchSchedulePreview();
+  }
 }
 
-function setBatchFreq(n) {
+// デフォルト時刻テンプレート（本数ごと）
+const DEFAULT_SLOT_TIMES = {
+  1: ['12:00'],
+  2: ['12:00', '18:00'],
+  3: ['10:00', '14:00', '18:00'],
+  4: ['09:00', '12:00', '15:00', '18:00'],
+  5: ['09:00', '11:00', '13:00', '15:00', '18:00'],
+  6: ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'],
+  7: ['09:00', '10:30', '12:00', '13:30', '15:00', '17:00', '19:00'],
+  8: ['09:00', '10:30', '12:00', '13:30', '15:00', '16:30', '18:00', '20:00'],
+  9: ['09:00', '10:00', '11:00', '12:00', '13:00', '15:00', '17:00', '19:00', '21:00'],
+  10: ['08:00', '09:00', '10:00', '11:00', '12:00', '14:00', '16:00', '17:00', '19:00', '21:00'],
+};
+
+function onBatchPpdChange(n) {
   batchState.postsPerDay = n;
-  [1, 2, 3].forEach(i => {
-    document.getElementById(`batch-freq-${i}`)?.classList.toggle('active', i === n);
+  document.getElementById('batch-ppd-val').textContent = n + '本';
+  // 既存スロットを保持しつつ増減に対応
+  const prev = batchState.timeSlots;
+  const defaults = DEFAULT_SLOT_TIMES[n] || Array.from({length: n}, (_, i) => `${(9 + i).toString().padStart(2,'0')}:00`);
+  const next = defaults.map((def, i) => prev[i] || def);
+  batchState.timeSlots = next;
+  renderBatchTimeSlots();
+  updateBatchSchedulePreview();
+}
+
+function renderBatchTimeSlots() {
+  const container = document.getElementById('batch-time-slots');
+  if (!container) return;
+  const n = batchState.postsPerDay;
+  container.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const val = batchState.timeSlots[i] || '12:00';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+    wrap.innerHTML = `
+      <label style="font-size:11px;color:var(--text-muted);">${i+1}本目</label>
+      <input type="time" value="${val}" data-slot="${i}"
+        style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:13px;"
+        oninput="batchState.timeSlots[${i}]=this.value;updateBatchSchedulePreview()">
+    `;
+    container.appendChild(wrap);
+  }
+}
+
+function updateBatchSchedulePreview() {
+  const dateVal = document.getElementById('batch-schedule-date')?.value;
+  const preview = document.getElementById('batch-schedule-preview');
+  if (!preview) return;
+  if (!dateVal) { preview.textContent = '投稿開始日を選択してください'; return; }
+  const n = batchState.postsPerDay;
+  const slots = batchState.timeSlots.slice(0, n);
+  const timesStr = slots.join(' / ');
+  preview.textContent = `${dateVal} から毎日 ${timesStr} に ${n}本ずつ自動公開されます`;
+}
+
+function setBatchThumbMode(mode) {
+  batchState.thumbMode = mode;
+  ['auto', 'custom', 'none'].forEach(m => {
+    document.getElementById(`batch-thumb-${m}`)?.classList.toggle('active', m === mode);
   });
-  const labels = {
-    1: '投稿開始日から毎日 12:00 に1本ずつ自動公開されます',
-    2: '投稿開始日から毎日 12:00 と 18:00 の2回自動公開されます',
-    3: '投稿開始日から毎日 12:00・15:00・18:00 の3回自動公開されます',
-  };
-  document.getElementById('batch-schedule-preview').textContent = labels[n];
+  document.getElementById('batch-thumb-upload-row').style.display = mode === 'custom' ? '' : 'none';
 }
 
 function batchSelectAll(checked) {
@@ -1653,6 +1749,7 @@ async function startBatchJob() {
   const doUpload = document.getElementById('batch-do-upload').checked;
   const useSchedule = document.getElementById('batch-use-schedule').checked;
   const scheduleDate = useSchedule ? document.getElementById('batch-schedule-date').value : null;
+  const timeSlots = useSchedule ? batchState.timeSlots.slice(0, batchState.postsPerDay) : null;
 
   const body = {
     channel_url: channelUrl,
@@ -1666,12 +1763,14 @@ async function startBatchJob() {
     max_duration: +document.getElementById('batch-max-dur').value,
     output_format: batchState.outputFormat,
     show_title: document.getElementById('batch-show-title').checked,
+    thumbnail_mode: batchState.thumbMode,
     whisper_model: document.getElementById('batch-whisper-model').value,
     device: 'cpu',
     do_upload: doUpload,
     privacy: batchState.privacy,
     schedule_date: scheduleDate,
     posts_per_day: batchState.postsPerDay,
+    time_slots: timeSlots,
   };
 
   const btn = document.getElementById('batch-start-btn');

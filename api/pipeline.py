@@ -40,6 +40,7 @@ async def run_pipeline(job: Job) -> None:
     clip_mode = settings.get("clip_mode", "auto")  # auto / manual
     manual_segments = settings.get("manual_segments", [])
     show_title = settings.get("show_title", True)
+    thumbnail_mode = settings.get("thumbnail_mode", "auto")
     privacy = settings.get("privacy", "private")
     do_upload = settings.get("do_upload", False)
     schedule_str = settings.get("schedule_at", None)
@@ -163,6 +164,7 @@ async def run_pipeline(job: Job) -> None:
             output_dir=output_dir,
             aspect_ratio=aspect_ratio,
             show_title=show_title,
+            thumbnail_mode=thumbnail_mode,
         )
 
         clip_results = await loop.run_in_executor(
