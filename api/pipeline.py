@@ -41,6 +41,8 @@ async def run_pipeline(job: Job) -> None:
     manual_segments = settings.get("manual_segments", [])
     show_title = settings.get("show_title", True)
     thumbnail_mode = settings.get("thumbnail_mode", "auto")
+    font_size = int(settings.get("font_size", 54))
+    font_bold = bool(settings.get("font_bold", True))
     privacy = settings.get("privacy", "private")
     do_upload = settings.get("do_upload", False)
     schedule_str = settings.get("schedule_at", None)
@@ -165,6 +167,9 @@ async def run_pipeline(job: Job) -> None:
             aspect_ratio=aspect_ratio,
             show_title=show_title,
             thumbnail_mode=thumbnail_mode,
+            source_thumbnail_url=video_info.thumbnail_url or "",
+            font_size=font_size,
+            font_bold=font_bold,
         )
 
         clip_results = await loop.run_in_executor(

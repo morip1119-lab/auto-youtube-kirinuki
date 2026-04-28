@@ -619,7 +619,7 @@
         <div class="form-group" style="margin-top:14px;">
           <label>縦動画の下部エリア</label>
           <div class="seg-ctrl">
-            <button id="thumb-mode-auto" class="active" onclick="setThumbMode('auto')">自動（動画から）</button>
+            <button id="thumb-mode-auto" class="active" onclick="setThumbMode('auto')">自動（サムネイル）</button>
             <button id="thumb-mode-custom" onclick="setThumbMode('custom')">画像を指定</button>
             <button id="thumb-mode-none" onclick="setThumbMode('none')">なし</button>
           </div>
@@ -627,6 +627,16 @@
             <input type="file" id="thumb-file" accept="image/*" style="width:100%;font-size:13px;">
             <div class="sub" style="margin-top:4px;">縦動画の下部に表示する画像（JPG/PNG推奨）</div>
           </div>
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label>タイトル文字サイズ <span id="font-size-val" style="color:var(--accent-light);font-weight:700;">54</span></label>
+          <input type="range" id="font-size" min="24" max="80" value="54" step="2"
+            oninput="document.getElementById('font-size-val').textContent=this.value"
+            style="width:100%;accent-color:var(--accent);margin-top:4px;">
+        </div>
+        <div class="toggle-row" style="margin-top:10px;">
+          <div><div>太字</div><div class="sub">タイトルをボールドフォントで表示</div></div>
+          <label class="toggle"><input type="checkbox" id="font-bold" checked><span class="toggle-slider"></span></label>
         </div>
       </div>
     </div>
@@ -873,7 +883,7 @@
           <div class="form-group" style="margin-top:14px;">
             <label>縦動画の下部エリア</label>
             <div class="seg-ctrl">
-              <button id="batch-thumb-auto" class="active" onclick="setBatchThumbMode('auto')">自動（動画から）</button>
+              <button id="batch-thumb-auto" class="active" onclick="setBatchThumbMode('auto')">自動（サムネイル）</button>
               <button id="batch-thumb-custom" onclick="setBatchThumbMode('custom')">画像を指定</button>
               <button id="batch-thumb-none" onclick="setBatchThumbMode('none')">なし</button>
             </div>
@@ -881,6 +891,16 @@
               <input type="file" id="batch-thumb-file" accept="image/*" style="width:100%;font-size:13px;">
               <div class="sub" style="margin-top:4px;">全動画共通で使用する画像（JPG/PNG推奨）</div>
             </div>
+          </div>
+          <div class="form-group" style="margin-top:14px;">
+            <label>タイトル文字サイズ <span id="batch-font-size-val" style="color:var(--accent-light);font-weight:700;">54</span></label>
+            <input type="range" id="batch-font-size" min="24" max="80" value="54" step="2"
+              oninput="document.getElementById('batch-font-size-val').textContent=this.value"
+              style="width:100%;accent-color:var(--accent);margin-top:4px;">
+          </div>
+          <div class="toggle-row" style="margin-top:10px;">
+            <div><div>太字</div><div class="sub">タイトルをボールドフォントで表示</div></div>
+            <label class="toggle"><input type="checkbox" id="batch-font-bold" checked><span class="toggle-slider"></span></label>
           </div>
           <div class="form-group" style="margin-top:14px;">
             <label>Whisper モデル</label>
@@ -1327,6 +1347,8 @@ async function startJob() {
     manual_segments: manualSegments,
     show_title: document.getElementById('show-title').checked,
     thumbnail_mode: state.thumbMode,
+    font_size: +document.getElementById('font-size').value,
+    font_bold: document.getElementById('font-bold').checked,
     whisper_model: document.getElementById('whisper-model').value,
     device: state.device,
     do_upload: doUpload,
@@ -1778,6 +1800,8 @@ async function startBatchJob() {
     output_format: batchState.outputFormat,
     show_title: document.getElementById('batch-show-title').checked,
     thumbnail_mode: batchState.thumbMode,
+    font_size: +document.getElementById('batch-font-size').value,
+    font_bold: document.getElementById('batch-font-bold').checked,
     whisper_model: document.getElementById('batch-whisper-model').value,
     device: 'cpu',
     do_upload: doUpload,

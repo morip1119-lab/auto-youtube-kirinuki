@@ -8,11 +8,54 @@ from dataclasses import dataclass
 from typing import Optional
 import subprocess
 import re
+import platform
+import urllib.request
+import tempfile
 
 from rich.console import Console
 from .analyzer import ClipCandidate
 
 console = Console()
+
+
+def _get_font_path(bold: bool = True) -> str:
+    """OS に応じた CJK フォントパスを返す。見つからない場合は空文字。"""
+    if platform.system() == "Windows":
+        name = "YuGothB.ttc" if bold else "YuGothM.ttc"
+        p = Path("C:/Windows/Fonts") / name
+        return str(p).replace("\\", "/").replace(":", "\\:") if p.exists() else ""
+    # Linux (Ubuntu / Debian)
+    candidates_bold = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Bold.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+    ]
+    candidates_regular = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ]
+    candidates = candidates_bold if bold else candidates_regular
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    # どちらでもなければ bold 側も試す
+    for path in candidates_bold:
+        if Path(path).exists():
+            return path
+    return ""
+
+
+def _download_thumbnail(url: str, dest: Path) -> bool:
+    """サムネイル URL を dest にダウンロードする。成功したら True。"""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            dest.write_bytes(resp.read())
+        return dest.stat().st_size > 1000
+    except Exception:
+        return False
 
 
 @dataclass
@@ -48,6 +91,9 @@ class VideoCutter:
         show_title: bool = True,       # タイトルオーバーレイ表示
         thumbnail_mode: str = "auto",  # "auto" / "none" / "custom"
         custom_thumbnail_path: Optional[str] = None,
+        source_thumbnail_url: str = "",   # auto 時に使う YouTube サムネイル URL
+        font_size: int = 54,
+        font_bold: bool = True,
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -63,6 +109,9 @@ class VideoCutter:
         self.show_title = show_title
         self.thumbnail_mode = thumbnail_mode
         self.custom_thumbnail_path = Path(custom_thumbnail_path) if custom_thumbnail_path else None
+        self.source_thumbnail_url = source_thumbnail_url
+        self.font_size = font_size
+        self.font_bold = font_bold
 
     def cut_clip(
         self,
@@ -181,12 +230,17 @@ class VideoCutter:
                 thumb_temp = self.custom_thumbnail_path
                 cleanup_thumb = False
             else:
-                # auto: 動画からフレーム抽出
+                # auto: YouTube サムネイル URL → 動画フレーム抽出 の順で試みる
                 thumb_temp = output_path.with_name(output_path.stem + "_vthumb.jpg")
-                has_thumb = self._extract_frame(
-                    video_path, start + min(2.0, duration / 2), thumb_temp
-                )
                 cleanup_thumb = True
+                has_thumb = False
+                if self.source_thumbnail_url:
+                    has_thumb = _download_thumbnail(self.source_thumbnail_url, thumb_temp)
+                if not has_thumb:
+                    # フォールバック: 動画フレームを抽出
+                    has_thumb = self._extract_frame(
+                        video_path, start + min(2.0, duration / 2), thumb_temp
+                    )
                 if not has_thumb:
                     thumb_temp = None
             if thumb_temp:
@@ -223,19 +277,23 @@ class VideoCutter:
 
         if title_text:
             safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
+            fp = _get_font_path(self.font_bold)
+            font_opt = f":fontfile='{fp}'" if fp else ""
+            fs_v = self.font_size
+            fs_h = max(24, self.font_size - 10)
             if is_vertical:
                 drawtext = (
                     f"drawtext=text='{safe_text}'"
-                    ":fontsize=52:fontcolor=white"
-                    ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
+                    f":fontsize={fs_v}:fontcolor=white"
+                    f"{font_opt}"
                     ":x=(w-text_w)/2:y=h/8"
                     ":box=1:boxcolor=black@0.6:boxborderw=12"
                 )
             else:
                 drawtext = (
                     f"drawtext=text='{safe_text}'"
-                    ":fontsize=44:fontcolor=white"
-                    ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
+                    f":fontsize={fs_h}:fontcolor=white"
+                    f"{font_opt}"
                     ":x=(w-text_w)/2:y=h-text_h-40"
                     ":box=1:boxcolor=black@0.6:boxborderw=10"
                 )
@@ -320,10 +378,12 @@ class VideoCutter:
         if title_text:
             safe_text = title_text.replace("'", "\\'").replace(":", "\\:")
             title_y = f"({TITLE_H}-text_h)/2"
+            fp = _get_font_path(self.font_bold)
+            font_opt = f":fontfile='{fp}'" if fp else ""
             drawtext = (
                 f"[{cur}]drawtext=text='{safe_text}'"
-                ":fontsize=54:fontcolor=white"
-                ":fontfile='C\\:/Windows/Fonts/YuGothB.ttc'"
+                f":fontsize={self.font_size}:fontcolor=white"
+                f"{font_opt}"
                 f":x=(w-text_w)/2:y={title_y}"
                 "[titled]"
             )
