@@ -30,20 +30,18 @@ def _cookie_file_opts() -> dict:
 
 def _base_opts() -> dict:
     """ボット検出を回避するための基本オプション。
-    tv_embedded / ios / android の順で試行し、Cookie ファイルがあれば追加する。
+    android / web の順で試行し、Cookie ファイルがあれば追加する。
+    tv_embedded は利用可能フォーマットが極めて少ないため除外。
     """
     opts: dict = {
         "extractor_args": {
             "youtube": {
-                # tv_embedded は署名検証が緩く VPS でも動きやすい
-                "player_client": ["tv_embedded", "ios", "android", "web"],
+                "player_client": ["android", "web"],
             }
         },
         "http_headers": {
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
+                "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip"
             ),
         },
     }
@@ -144,7 +142,6 @@ class YouTubeDownloader:
             ],
             "quiet": False,
             "no_warnings": True,
-            "ignore_no_formats_error": True,
             "progress_hooks": [self._progress_hook],
         })
 
