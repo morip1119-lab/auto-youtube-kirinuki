@@ -694,13 +694,20 @@
         </div>
         <div class="toggle-row" style="margin-bottom:14px;">
           <div>
-            <div>YouTube Cookie</div>
+            <div>YouTube Cookie <span id="cookie-status-badge" style="font-size:11px;padding:2px 7px;border-radius:10px;background:#333;margin-left:6px;"></span></div>
             <div class="sub">ボット検出が出た場合にcookies.txtをアップロード</div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;">
             <input type="file" id="cookie-file-input" accept=".txt" style="display:none" onchange="uploadCookieFile(this)">
             <button class="btn btn-outline btn-sm" onclick="document.getElementById('cookie-file-input').click()">Cookie更新</button>
           </label>
+        </div>
+        <div class="toggle-row" style="margin-bottom:14px;">
+          <div>
+            <div>yt-dlp</div>
+            <div class="sub" id="ytdlp-version-label">バージョン確認中...</div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="ytdlp-update-btn" onclick="updateYtdlp()">最新版に更新</button>
         </div>
 
         <div class="upload-section" id="upload-section">
@@ -1997,7 +2004,9 @@ async function uploadCookieFile(input) {
     const res = await fetch('/api/cookies/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (res.ok) {
-      alert('Cookie を更新しました。ファイル: ' + data.path);
+      const badge = document.getElementById('cookie-status-badge');
+      if (badge) { badge.textContent = '有効'; badge.style.background = '#1a6b3a'; badge.style.color = '#6fcf97'; }
+      alert('Cookie を保存しました: ' + data.path + '\n(' + Math.round(data.size/1024) + ' KB)');
     } else {
       alert('エラー: ' + (data.detail || JSON.stringify(data)));
     }
@@ -2005,6 +2014,28 @@ async function uploadCookieFile(input) {
     alert('アップロードエラー: ' + e.message);
   }
   input.value = '';
+}
+
+async function updateYtdlp() {
+  const btn = document.getElementById('ytdlp-update-btn');
+  const label = document.getElementById('ytdlp-version-label');
+  if (btn) { btn.disabled = true; btn.textContent = '更新中...'; }
+  if (label) label.textContent = 'pip install -U yt-dlp を実行中（1〜2分かかります）...';
+  try {
+    const res = await fetch('/api/ytdlp/update', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      if (label) label.textContent = '最新版: v' + data.version;
+      alert('yt-dlp を更新しました: v' + data.version);
+    } else {
+      if (label) label.textContent = '更新失敗';
+      alert('更新失敗:\n' + data.log);
+    }
+  } catch (e) {
+    alert('エラー: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '最新版に更新'; }
+  }
 }
 
 async function reauth() {

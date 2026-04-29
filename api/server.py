@@ -357,13 +357,52 @@ async def get_youtube_token_status():
 
 @app.post("/api/cookies/upload")
 async def upload_cookies(file: UploadFile = File(...)):
-    """cookies.txt をアップロードして YOUTUBE_COOKIES_FILE に保存する"""
-    cookie_path = Path(os.environ.get("YOUTUBE_COOKIES_FILE", "youtube_cookies.txt"))
+    """cookies.txt をアップロードして YOUTUBE_COOKIES_FILE に保存し .env にも書き込む"""
+    # 常に固定パスに保存（再起動後も有効）
+    cookie_path = Path("/opt/kirinuki/youtube_cookies.txt")
+    if not cookie_path.parent.exists():
+        # ローカル開発環境のフォールバック
+        cookie_path = Path("youtube_cookies.txt").resolve()
     cookie_path.parent.mkdir(parents=True, exist_ok=True)
     content = await file.read()
     cookie_path.write_bytes(content)
     os.environ["YOUTUBE_COOKIES_FILE"] = str(cookie_path)
-    return {"path": str(cookie_path), "size": len(content)}
+
+    # .env ファイルにも書き込んで再起動後も有効にする
+    env_path = Path(".env")
+    if env_path.exists():
+        text = env_path.read_text(encoding="utf-8")
+        key = "YOUTUBE_COOKIES_FILE"
+        new_line = f'{key}={cookie_path}'
+        if key in text:
+            import re
+            text = re.sub(rf'^{key}=.*$', new_line, text, flags=re.MULTILINE)
+        else:
+            text = text.rstrip() + f'\n{new_line}\n'
+        env_path.write_text(text, encoding="utf-8")
+
+    return {"path": str(cookie_path), "size": len(content), "message": "Cookie を保存しました"}
+
+
+@app.post("/api/ytdlp/update")
+async def update_ytdlp():
+    """yt-dlp を最新バージョンに更新する"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["pip", "install", "-U", "yt-dlp"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            # バージョン確認
+            ver = subprocess.run(
+                ["python", "-c", "import yt_dlp; print(yt_dlp.version.__version__)"],
+                capture_output=True, text=True,
+            )
+            return {"success": True, "version": ver.stdout.strip(), "log": result.stdout[-500:]}
+        return {"success": False, "log": result.stderr[-500:]}
+    except Exception as e:
+        return {"success": False, "log": str(e)}
 
 
 @app.get("/api/settings")
