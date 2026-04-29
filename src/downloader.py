@@ -60,6 +60,21 @@ def _base_opts() -> dict:
     return opts
 
 
+def _channel_opts(extra: dict | None = None) -> dict:
+    """チャンネルページ取得専用オプション。
+    player_client を指定するとタブ認識エラーが起きるため extractor_args を使わない。
+    """
+    opts: dict = {
+        "quiet": True,
+        "no_warnings": True,
+        "ignoreerrors": True,
+    }
+    opts.update(_cookie_file_opts())
+    if extra:
+        opts.update(extra)
+    return opts
+
+
 def _with_cookies(opts: dict) -> dict:
     base = _base_opts()
     merged = dict(base)
@@ -275,12 +290,9 @@ class YouTubeDownloader:
         # extract_flat では upload_date が含まれないため daterange は使わず手動フィルターを行う。
         # 日付フィルターあり時は多めにフェッチしてから絞り込む。
         fetch_limit = min(max(200, max_videos * 10), 800) if has_date_filter else max_videos
-        ydl_opts: dict = _with_cookies({
-            "quiet": True,
-            "no_warnings": True,
+        ydl_opts: dict = _channel_opts({
             "extract_flat": "in_playlist",
             "playlistend": fetch_limit,
-            "ignoreerrors": True,
             "socket_timeout": 30,
         })
 
