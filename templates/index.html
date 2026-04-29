@@ -2059,6 +2059,26 @@ async function reauth() {
 ─────────────────────────────────────────────────────── */
 updateSummary();
 checkAuthStatus();
+
+// Cookie ステータスを起動時にチェック
+(async () => {
+  try {
+    const res = await fetch('/api/cookies/status');
+    const data = await res.json();
+    const badge = document.getElementById('cookie-status-badge');
+    if (badge) {
+      if (data.found) {
+        badge.textContent = '有効 (' + Math.round(data.size/1024) + 'KB)';
+        badge.style.background = '#1a6b3a';
+        badge.style.color = '#6fcf97';
+      } else {
+        badge.textContent = '未設定';
+        badge.style.background = '#6b1a1a';
+        badge.style.color = '#ff6b6b';
+      }
+    }
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>

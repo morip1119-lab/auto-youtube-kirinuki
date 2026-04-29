@@ -384,6 +384,25 @@ async def upload_cookies(file: UploadFile = File(...)):
     return {"path": str(cookie_path), "size": len(content), "message": "Cookie を保存しました"}
 
 
+@app.get("/api/cookies/status")
+async def get_cookie_status():
+    """Cookie ファイルの状態を返す"""
+    candidates = [
+        os.environ.get("YOUTUBE_COOKIES_FILE"),
+        os.environ.get("YT_DLP_COOKIES_FILE"),
+        "/opt/kirinuki/youtube_cookies.txt",
+        "youtube_cookies.txt",
+        "cookies.txt",
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        p = Path(raw).expanduser()
+        if p.is_file() and p.stat().st_size > 0:
+            return {"found": True, "path": str(p), "size": p.stat().st_size}
+    return {"found": False, "path": None, "size": 0}
+
+
 @app.post("/api/ytdlp/update")
 async def update_ytdlp():
     """yt-dlp を最新バージョンに更新する"""

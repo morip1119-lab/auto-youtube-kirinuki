@@ -18,14 +18,25 @@ def _cookie_file_opts() -> dict:
     """YouTube がボット検出する環境では Netscape 形式の cookies ファイルが必要なことがあります。
 
     環境変数 YOUTUBE_COOKIES_FILE または YT_DLP_COOKIES_FILE にパスを指定。
+    未指定の場合は既定パスを自動検索する。
     """
-    raw = os.environ.get("YOUTUBE_COOKIES_FILE") or os.environ.get("YT_DLP_COOKIES_FILE")
-    if not raw:
-        return {}
-    p = Path(raw).expanduser()
-    if not p.is_file():
-        return {}
-    return {"cookiefile": str(p.resolve())}
+    # 検索順: 環境変数 → VPS 固定パス → カレントディレクトリ
+    candidates = [
+        os.environ.get("YOUTUBE_COOKIES_FILE"),
+        os.environ.get("YT_DLP_COOKIES_FILE"),
+        "/opt/kirinuki/youtube_cookies.txt",
+        "youtube_cookies.txt",
+        "cookies.txt",
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        p = Path(raw).expanduser()
+        if p.is_file() and p.stat().st_size > 0:
+            console.print(f"[green]Cookie ファイルを使用: {p}[/green]")
+            return {"cookiefile": str(p.resolve())}
+    console.print("[yellow]Cookie ファイルが見つかりません（ボット検出が起きやすくなります）[/yellow]")
+    return {}
 
 
 def _base_opts() -> dict:
