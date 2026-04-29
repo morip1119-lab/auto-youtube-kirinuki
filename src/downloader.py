@@ -263,8 +263,7 @@ class YouTubeDownloader:
             channel_url = f"https://www.youtube.com/{channel_url}"
 
         base_url = channel_url.rstrip("/")
-        # タブサフィックス・クエリをすべて除去してチャンネルのルートURLに戻す
-        # （/videos などは extractor_args で tab 指定するため URL には付けない）
+        # 既存のタブ指定・クエリを除去
         for tab in ["/videos", "/shorts", "/streams", "/playlists", "/featured"]:
             if tab in base_url:
                 base_url = base_url[:base_url.index(tab)]
@@ -272,7 +271,9 @@ class YouTubeDownloader:
         if "?" in base_url:
             base_url = base_url[:base_url.index("?")]
         base_url = base_url.rstrip("/")
-        # 並び順は取得後にPythonで処理するため URL パラメータは使わない
+        # /videos タブを明示指定（ショート・ライブを除いた通常動画のみ取得）
+        if any(x in base_url for x in ["youtube.com/@", "youtube.com/channel/", "youtube.com/c/", "youtube.com/user/"]):
+            base_url += "/videos"
 
         def to_ydl_date(d: str) -> str:
             return d.replace("-", "") if d else ""
