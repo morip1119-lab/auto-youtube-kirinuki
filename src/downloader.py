@@ -61,8 +61,23 @@ def _base_opts() -> dict:
 
 
 def _with_cookies(opts: dict) -> dict:
-    merged = dict(opts)
-    merged.update(_base_opts())
+    base = _base_opts()
+    merged = dict(base)
+    # extractor_args は deep merge して両方の設定を保持する
+    if "extractor_args" in opts and "extractor_args" in base:
+        merged_ea = {}
+        for k, v in base["extractor_args"].items():
+            merged_ea[k] = dict(v)
+        for k, v in opts["extractor_args"].items():
+            if k in merged_ea:
+                merged_ea[k].update(v)
+            else:
+                merged_ea[k] = dict(v)
+        merged["extractor_args"] = merged_ea
+        remaining = {k: v for k, v in opts.items() if k != "extractor_args"}
+        merged.update(remaining)
+    else:
+        merged.update(opts)
     return merged
 
 
