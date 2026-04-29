@@ -233,19 +233,15 @@ class YouTubeDownloader:
             channel_url = f"https://www.youtube.com/{channel_url}"
 
         base_url = channel_url.rstrip("/")
-        # /videos タブを指定（yt-dlp が認識できる形式）
-        if (
-            "youtube.com/@" in base_url or
-            "youtube.com/channel/" in base_url or
-            "youtube.com/c/" in base_url or
-            "youtube.com/user/" in base_url
-        ):
-            # 既存のタブ指定・クエリを除去してから /videos を付ける
-            for tab in ["/videos", "/shorts", "/streams", "/playlists"]:
-                if tab in base_url:
-                    base_url = base_url[:base_url.index(tab)]
-                    break
-            base_url = base_url.rstrip("/") + "/videos"
+        # タブサフィックス・クエリをすべて除去してチャンネルのルートURLに戻す
+        # （/videos などは extractor_args で tab 指定するため URL には付けない）
+        for tab in ["/videos", "/shorts", "/streams", "/playlists", "/featured"]:
+            if tab in base_url:
+                base_url = base_url[:base_url.index(tab)]
+                break
+        if "?" in base_url:
+            base_url = base_url[:base_url.index("?")]
+        base_url = base_url.rstrip("/")
         # 並び順は取得後にPythonで処理するため URL パラメータは使わない
 
         def to_ydl_date(d: str) -> str:
@@ -264,6 +260,12 @@ class YouTubeDownloader:
         # extract_flat では upload_date が含まれないため daterange は使わず手動フィルターを行う。
         # 日付フィルターあり時は多めにフェッチしてから絞り込む。
         fetch_limit = min(max(200, max_videos * 10), 800) if has_date_filter else max_videos
+        base_extractor_args = {
+            "youtube": {
+                "player_client": ["android", "web"],
+                "tab": ["videos"],          # videos タブを明示的に指定
+            }
+        }
         ydl_opts: dict = _with_cookies({
             "quiet": True,
             "no_warnings": True,
@@ -271,6 +273,7 @@ class YouTubeDownloader:
             "playlistend": fetch_limit,
             "ignoreerrors": True,
             "socket_timeout": 30,
+            "extractor_args": base_extractor_args,
         })
 
         videos: list[VideoInfo] = []
