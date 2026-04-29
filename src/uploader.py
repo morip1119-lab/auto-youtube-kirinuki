@@ -79,6 +79,12 @@ class YouTubeUploader:
         creds = None
 
         if os.path.exists(self.token_file):
+            # パーミッションエラーを防ぐため読み取り権限を確保
+            try:
+                import stat
+                os.chmod(self.token_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+            except Exception:
+                pass
             with open(self.token_file, "rb") as f:
                 creds = pickle.load(f)
 
@@ -96,6 +102,11 @@ class YouTubeUploader:
 
             with open(self.token_file, "wb") as f:
                 pickle.dump(creds, f)
+            try:
+                import stat
+                os.chmod(self.token_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+            except Exception:
+                pass
             console.print("[green]認証完了・トークン保存済み[/green]")
 
         self._youtube = build("youtube", "v3", credentials=creds)
