@@ -262,33 +262,17 @@ class YouTubeDownloader:
         # ただし全件フェッチは遅いので、日付フィルターなしの場合のみ
         # 高速な flat モードを使い、フィルターあり時は daterange に頼る。
         # ─────────────────────────────────────────────────────────────────
-        if has_date_filter:
-            # daterange フィルターを yt-dlp に渡して確実に絞り込む
-            # playlistend は大きめだが2000だと初回抽出が極端に遅くタイムアウトしやすい
-            ydl_opts: dict = _with_cookies({
-                "quiet": True,
-                "no_warnings": True,
-                "extract_flat": "in_playlist",
-                "playlistend": min(max(200, max_videos * 15), 800),
-                "ignoreerrors": True,
-                "socket_timeout": 30,
-            })
-            try:
-                ydl_opts["daterange"] = yt_dlp.utils.DateRange(
-                    date_from_ydl or None,
-                    date_to_ydl   or None,
-                )
-            except Exception:
-                pass
-        else:
-            ydl_opts = _with_cookies({
-                "quiet": True,
-                "no_warnings": True,
-                "extract_flat": "in_playlist",
-                "playlistend": max_videos,
-                "ignoreerrors": True,
-                "socket_timeout": 30,
-            })
+        # extract_flat では upload_date が含まれないため daterange は使わず手動フィルターを行う。
+        # 日付フィルターあり時は多めにフェッチしてから絞り込む。
+        fetch_limit = min(max(200, max_videos * 10), 800) if has_date_filter else max_videos
+        ydl_opts: dict = _with_cookies({
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "playlistend": fetch_limit,
+            "ignoreerrors": True,
+            "socket_timeout": 30,
+        })
 
         videos: list[VideoInfo] = []
         channel_title_fallback = ""
