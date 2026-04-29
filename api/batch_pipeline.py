@@ -46,9 +46,11 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
     font_bold = bool(settings.get("font_bold", True))
     privacy = settings.get("privacy", "private")
     do_upload = settings.get("do_upload", False)
-    schedule_date = settings.get("schedule_date", None)
+    schedule_date = settings.get("schedule_date") or None
     posts_per_day = int(settings.get("posts_per_day", 1))
     time_slots: list = settings.get("time_slots") or None
+
+    print(f"[Schedule] schedule_date={schedule_date}, posts_per_day={posts_per_day}, time_slots={time_slots}, privacy={settings.get('privacy')}")
 
     total = len(batch_job.videos)
     scheduled_times: Optional[list] = _resolve_schedule(

@@ -267,11 +267,16 @@ class BatchJobCreateRequest(BaseModel):
     show_title: bool = True
     whisper_model: str = "small"
     device: str = "cpu"
+    # サムネイル・フォント設定
+    thumbnail_mode: str = "auto"
+    font_size: int = 54
+    font_bold: bool = True
     # アップロード設定
     do_upload: bool = False
     privacy: str = "private"
-    schedule_date: Optional[str] = None   # 投稿開始日 YYYY-MM-DD
-    posts_per_day: int = 1                # 1日あたりの投稿回数 (1/2/3)
+    schedule_date: Optional[str] = None       # 投稿開始日 YYYY-MM-DD
+    posts_per_day: int = 1                    # 1日あたりの投稿本数
+    time_slots: Optional[list[str]] = None    # ["10:00","12:00",...] 各スロットの時刻
 
 
 @app.post("/api/batch-jobs")
