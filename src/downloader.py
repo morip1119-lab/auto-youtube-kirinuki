@@ -122,13 +122,11 @@ class YouTubeDownloader:
         console.print(f"[cyan]動画をダウンロード中: {info.title}[/cyan]")
         console.print(f"  長さ: {info.duration // 60}分{info.duration % 60}秒")
 
-        # フォーマット: 分離ストリームを優先しつつ、tv_embedded 等で利用できない場合は
-        # 結合済みの best にフォールバックする
+        # Android クライアントは分離ストリーム非対応のため、結合済みストリームを優先
         fmt = (
-            f"bestvideo[height<={self.max_height}][ext=mp4]+bestaudio[ext=m4a]"
-            f"/bestvideo[height<={self.max_height}]+bestaudio"
+            f"best[height<={self.max_height}][ext=mp4]"
             f"/best[height<={self.max_height}]"
-            f"/bestvideo+bestaudio/best"
+            f"/best"
         )
         ydl_opts = _with_cookies({
             "format": fmt,
