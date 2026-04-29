@@ -233,21 +233,20 @@ class YouTubeDownloader:
             channel_url = f"https://www.youtube.com/{channel_url}"
 
         base_url = channel_url.rstrip("/")
+        # /videos タブを指定（yt-dlp が認識できる形式）
         if (
             "youtube.com/@" in base_url or
             "youtube.com/channel/" in base_url or
             "youtube.com/c/" in base_url or
             "youtube.com/user/" in base_url
         ):
-            if not any(base_url.endswith(s) for s in ["/videos", "/shorts", "/streams", "/playlists"]):
-                base_url += "/videos"
-
-        # 並び順を URL で指定（YouTube の sort パラメータ）
-        if sort_order == "oldest":
-            base_url += "?view=0&sort=da"
-        elif sort_order == "views":
-            base_url += "?view=0&sort=p"
-        # newest はデフォルト（パラメータ不要）
+            # 既存のタブ指定・クエリを除去してから /videos を付ける
+            for tab in ["/videos", "/shorts", "/streams", "/playlists"]:
+                if tab in base_url:
+                    base_url = base_url[:base_url.index(tab)]
+                    break
+            base_url = base_url.rstrip("/") + "/videos"
+        # 並び順は取得後にPythonで処理するため URL パラメータは使わない
 
         def to_ydl_date(d: str) -> str:
             return d.replace("-", "") if d else ""
@@ -346,6 +345,15 @@ class YouTubeDownloader:
                     break
 
         console.print(f"[cyan]日付フィルター後: {len(videos)}件[/cyan]")
+
+        # 並び順をPythonで処理
+        if sort_order == "oldest":
+            videos.sort(key=lambda v: v.upload_date or "")
+        elif sort_order == "views":
+            videos.sort(key=lambda v: v.view_count, reverse=True)
+        else:  # newest
+            videos.sort(key=lambda v: v.upload_date or "", reverse=True)
+
         return videos
 
     def save_video_info(self, info: VideoInfo, output_path: Path) -> None:
