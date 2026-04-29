@@ -26,6 +26,17 @@ from .clipper import ClipResult
 console = Console()
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+def _default_token_path() -> str:
+    """環境変数 → VPS固定パス → カレントディレクトリ の順で解決"""
+    env = os.environ.get("YOUTUBE_TOKEN_FILE")
+    if env and Path(env).exists():
+        return env
+    vps_path = Path("/opt/kirinuki/youtube_token.pickle")
+    if vps_path.exists():
+        return str(vps_path)
+    return "youtube_token.pickle"
+
 TOKEN_PICKLE = "youtube_token.pickle"
 
 # アップロードのチャンクサイズ（10MB）
@@ -62,13 +73,13 @@ class YouTubeUploader:
     def __init__(
         self,
         client_secrets_file: str = "client_secrets.json",
-        token_file: str = TOKEN_PICKLE,
+        token_file: str = "",
         default_privacy: str = "private",
         category_id: str = "22",
         description_footer: str = "",
     ):
         self.client_secrets_file = client_secrets_file
-        self.token_file = token_file
+        self.token_file = token_file or _default_token_path()
         self.default_privacy = default_privacy
         self.category_id = category_id
         self.description_footer = description_footer
@@ -78,11 +89,13 @@ class YouTubeUploader:
         """OAuth2認証を実行（初回はブラウザが開く）"""
         creds = None
 
+        # パスを再解決（起動後に配置された場合も拾う）
+        self.token_file = self.token_file or _default_token_path()
         if os.path.exists(self.token_file):
-            # パーミッションエラーを防ぐため読み取り権限を確保
+            # パーミッションエラーを防ぐため読み取り権限を強制付与
             try:
                 import stat
-                os.chmod(self.token_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                os.chmod(self.token_file, 0o644)
             except Exception:
                 pass
             with open(self.token_file, "rb") as f:
