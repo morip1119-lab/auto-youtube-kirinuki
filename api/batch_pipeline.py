@@ -335,11 +335,13 @@ def _resolve_schedule(
     if not start_date:
         return None
     try:
-        # time_slots が未指定の場合デフォルト値を割り当て
-        default_hours = {
-            1: ["12:00"], 2: ["12:00", "18:00"], 3: ["10:00", "14:00", "18:00"],
-        }
-        slots = time_slots or default_hours.get(posts_per_day, ["12:00"])
+        if time_slots and len(time_slots) >= posts_per_day:
+            slots = time_slots[:posts_per_day]
+        else:
+            # posts_per_day 本数に応じて等間隔のデフォルト時間を生成
+            # 例: 5本 → 8:00, 10:00, 12:00, 15:00, 18:00
+            base_hours = [8, 10, 12, 14, 16, 18, 20, 22, 6, 4]
+            slots = [f"{base_hours[i % len(base_hours)]:02d}:00" for i in range(posts_per_day)]
         # HH:MM → (hour, minute) に変換
         parsed: list[tuple[int, int]] = []
         for s in slots[:posts_per_day]:
