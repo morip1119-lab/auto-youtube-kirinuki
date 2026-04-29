@@ -389,14 +389,16 @@ async def update_ytdlp():
     """yt-dlp を最新バージョンに更新する"""
     import subprocess
     try:
+        import sys
+        pip_cmd = [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"]
         result = subprocess.run(
-            ["pip", "install", "-U", "yt-dlp"],
+            pip_cmd,
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode == 0:
             # バージョン確認
             ver = subprocess.run(
-                ["python", "-c", "import yt_dlp; print(yt_dlp.version.__version__)"],
+                [sys.executable, "-c", "import yt_dlp; print(yt_dlp.version.__version__)"],
                 capture_output=True, text=True,
             )
             return {"success": True, "version": ver.stdout.strip(), "log": result.stdout[-500:]}
