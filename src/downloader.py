@@ -88,7 +88,7 @@ class YouTubeDownloader:
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
-            "format": "best",
+            "format": "bestvideo+bestaudio/best",
             "check_formats": False,
             "ignore_no_formats_error": True,
         })
@@ -124,8 +124,16 @@ class YouTubeDownloader:
         console.print(f"[cyan]動画をダウンロード中: {info.title}[/cyan]")
         console.print(f"  長さ: {info.duration // 60}分{info.duration % 60}秒")
 
+        # フォーマット: 分離ストリームを優先しつつ、tv_embedded 等で利用できない場合は
+        # 結合済みの best にフォールバックする
+        fmt = (
+            f"bestvideo[height<={self.max_height}][ext=mp4]+bestaudio[ext=m4a]"
+            f"/bestvideo[height<={self.max_height}]+bestaudio"
+            f"/best[height<={self.max_height}]"
+            f"/bestvideo+bestaudio/best"
+        )
         ydl_opts = _with_cookies({
-            "format": f"bestvideo[height<={self.max_height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={self.max_height}]+bestaudio/best[height<={self.max_height}]/best",
+            "format": fmt,
             "outtmpl": str(self.output_dir / f"{vid}.%(ext)s"),
             "merge_output_format": "mp4",
             "postprocessors": [
@@ -136,6 +144,7 @@ class YouTubeDownloader:
             ],
             "quiet": False,
             "no_warnings": True,
+            "ignore_no_formats_error": True,
             "progress_hooks": [self._progress_hook],
         })
 
