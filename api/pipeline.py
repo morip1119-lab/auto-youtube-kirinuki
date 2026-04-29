@@ -244,25 +244,35 @@ async def run_pipeline(job: Job) -> None:
                     continue
 
                 scheduled_at = scheduled_times[i] if scheduled_times else None
-                result = await loop.run_in_executor(
-                    None, lambda cr=clip_result, m=meta, s=scheduled_at: uploader.upload(
-                        clip_result=cr,
-                        metadata=m,
-                        privacy=privacy,
-                        scheduled_at=s,
+                await job_manager.update(job, message=f"アップロード中 ({i+1}/{len(clip_outputs)}): {meta.title}")
+                try:
+                    result = await loop.run_in_executor(
+                        None, lambda cr=clip_result, m=meta, s=scheduled_at: uploader.upload(
+                            clip_result=cr,
+                            metadata=m,
+                            privacy=privacy,
+                            scheduled_at=s,
+                        )
                     )
-                )
+                except Exception as ue:
+                    await job_manager.update(job, message=f"アップロードエラー ({i+1}本目): {ue}")
+                    continue
                 if result.success:
                     clip_out.youtube_url = result.video_url
                     clip_out.youtube_video_id = result.video_id
                     if result.scheduled_at:
                         clip_out.scheduled_at = result.scheduled_at.isoformat()
-
-                await job_manager.update(
-                    job,
-                    message=f"アップロード完了: {meta.title}",
-                    progress=85 + int(15 * (i + 1) / len(clip_outputs)),
-                )
+                    await job_manager.update(
+                        job,
+                        message=f"アップロード完了: {result.video_url}",
+                        progress=85 + int(15 * (i + 1) / len(clip_outputs)),
+                    )
+                else:
+                    await job_manager.update(
+                        job,
+                        message=f"アップロード失敗 ({i+1}本目): {getattr(result, 'error', '不明なエラー')}",
+                        progress=85 + int(15 * (i + 1) / len(clip_outputs)),
+                    )
 
         # 完了
         await job_manager.update(

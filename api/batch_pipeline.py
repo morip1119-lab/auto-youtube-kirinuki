@@ -243,14 +243,25 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
                             continue
                         scheduled_at = scheduled_times[schedule_cursor] if scheduled_times else None
                         schedule_cursor += 1
-                        result = await loop.run_in_executor(
-                            None, lambda cr=clip_result, m=meta, s=scheduled_at: uploader.upload(
-                                clip_result=cr,
-                                metadata=m,
-                                privacy=privacy,
-                                scheduled_at=s,
-                            )
+                        await job_manager.update_batch(
+                            batch_job,
+                            message=f"[{vi+1}/{total}] アップロード中 ({i+1}/{len(clip_results)}): {meta.title}",
                         )
+                        try:
+                            result = await loop.run_in_executor(
+                                None, lambda cr=clip_result, m=meta, s=scheduled_at: uploader.upload(
+                                    clip_result=cr,
+                                    metadata=m,
+                                    privacy=privacy,
+                                    scheduled_at=s,
+                                )
+                            )
+                        except Exception as ue:
+                            await job_manager.update_batch(
+                                batch_job,
+                                message=f"[{vi+1}/{total}] アップロードエラー ({i+1}本目): {ue}",
+                            )
+                            continue
                         # all_clipsから対応エントリを探して更新
                         target_filename = clip_result.output_path.name
                         for co in batch_job.all_clips:
@@ -260,6 +271,15 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
                                     co.youtube_video_id = result.video_id
                                     if result.scheduled_at:
                                         co.scheduled_at = result.scheduled_at.isoformat()
+                                    await job_manager.update_batch(
+                                        batch_job,
+                                        message=f"[{vi+1}/{total}] アップロード完了: {result.video_url}",
+                                    )
+                                else:
+                                    await job_manager.update_batch(
+                                        batch_job,
+                                        message=f"[{vi+1}/{total}] アップロード失敗 ({i+1}本目): {getattr(result, 'error', '不明なエラー')}",
+                                    )
                                 break
 
                 video_item.status = "completed"
