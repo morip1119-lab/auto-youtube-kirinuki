@@ -1724,7 +1724,8 @@ async function fetchChannelVideos() {
       let msg = res.statusText || 'エラー';
       try {
         const j = await res.json();
-        msg = j.detail || msg;
+        const d = j.detail;
+        msg = (typeof d === 'string') ? d : (d?.message || d?.error || JSON.stringify(d)) || msg;
       } catch (_) {}
       throw new Error(msg);
     }
