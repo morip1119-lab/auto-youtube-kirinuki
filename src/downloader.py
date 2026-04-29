@@ -283,10 +283,12 @@ class YouTubeDownloader:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(base_url, download=False)
             if not info:
+                console.print(f"[red]チャンネル情報の取得に失敗: info=None url={base_url}[/red]")
                 return []
             channel_title_fallback = info.get("channel", info.get("uploader", ""))
             channel_id_fallback    = info.get("channel_id", "")
             entries = [e for e in (info.get("entries") or []) if e]
+            console.print(f"[cyan]取得エントリ数: {len(entries)} (日付フィルター: {date_from_ydl}〜{date_to_ydl})[/cyan]")
 
             for entry in entries:
                 video_id    = entry.get("id", "")
@@ -343,6 +345,7 @@ class YouTubeDownloader:
                 if len(videos) >= max_videos:
                     break
 
+        console.print(f"[cyan]日付フィルター後: {len(videos)}件[/cyan]")
         return videos
 
     def save_video_info(self, info: VideoInfo, output_path: Path) -> None:

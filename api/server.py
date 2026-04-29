@@ -217,6 +217,19 @@ async def get_channel_videos(
                 sort_order=sort_order,
             ),
         )
+        if not videos:
+            # 診断情報を返す（0件の原因調査用）
+            from src.downloader import _cookie_file_opts
+            cookie_info = _cookie_file_opts()
+            raise HTTPException(404, detail={
+                "message": "指定期間に動画が見つかりませんでした",
+                "debug": {
+                    "url": url,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "cookie_file": cookie_info.get("cookiefile", "未設定"),
+                },
+            })
         return [
             {
                 "video_id": v.video_id,
@@ -229,12 +242,14 @@ async def get_channel_videos(
             }
             for v in videos
         ]
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         hint = ""
         if "Sign in to confirm" in msg or "not a bot" in msg:
-            hint = " VPS では YOUTUBE_COOKIES_FILE（Netscape形式）の設定が必要なことがあります。"
-        raise HTTPException(400, f"チャンネル動画リストの取得に失敗しました: {msg}{hint}")
+            hint = " Cookie更新ボタンからcookies.txtをアップロードしてください。"
+        raise HTTPException(400, detail={"message": f"チャンネル動画リストの取得に失敗しました: {msg}{hint}", "error": msg})
 
 
 class BatchJobCreateRequest(BaseModel):
