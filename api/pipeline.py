@@ -47,6 +47,10 @@ async def run_pipeline(job: Job) -> None:
     do_upload = settings.get("do_upload", False)
     schedule_str = settings.get("schedule_at", None)
     schedule_interval = int(settings.get("schedule_interval", 24))
+    # 概要欄フッター: env のデフォルト + UI入力を結合
+    env_footer = os.environ.get("DESCRIPTION_FOOTER", "").strip()
+    ui_footer = (settings.get("description_footer") or "").strip()
+    description_footer = "\n\n".join(filter(None, [env_footer, ui_footer]))
 
     try:
         # モジュールを初期化（importを遅延させてパフォーマンス確保）
@@ -232,10 +236,16 @@ async def run_pipeline(job: Job) -> None:
             # スケジュール生成
             scheduled_times = _resolve_schedule(schedule_str, len(clip_outputs), schedule_interval)
 
-            uploader = YouTubeUploader(
-                client_secrets_file=client_secrets,
-                default_privacy=privacy,
-            )
+            try:
+                uploader = YouTubeUploader(
+                    client_secrets_file=client_secrets,
+                    default_privacy=privacy,
+                    description_footer=description_footer,
+                )
+                await loop.run_in_executor(None, uploader.authenticate)
+            except RuntimeError as auth_err:
+                await job_manager.update(job, message=f"YouTube認証エラー: {auth_err}", status=JobStatus.FAILED)
+                return
 
             for i, (clip_result, meta, clip_out) in enumerate(
                 zip(clip_results, metadata_list, clip_outputs)

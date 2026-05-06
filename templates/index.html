@@ -744,6 +744,11 @@
                 <span class="slider-val" id="interval-val">24時間ごと</span>
               </div>
             </div>
+            <div class="form-group" style="margin-top:12px;">
+              <label>概要欄フッター（任意）</label>
+              <textarea id="description-footer" rows="4" placeholder="例: チャンネル登録はこちら&#10;https://youtube.com/@..." style="width:100%;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+              <div style="font-size:11px;color:var(--text-sub);margin-top:4px;">ここに入力したテキストが概要欄の末尾に追加されます。.env の DESCRIPTION_FOOTER に設定したデフォルト文言の後に結合されます。</div>
+            </div>
           </div>
         </div>
 
@@ -993,6 +998,11 @@
               <div class="alert alert-info" id="batch-schedule-preview" style="font-size:12px;margin-top:10px;">
                 投稿開始日を選択してください
               </div>
+            </div>
+            <div class="form-group" style="margin-top:14px;">
+              <label>概要欄フッター（任意）</label>
+              <textarea id="batch-description-footer" rows="4" placeholder="例: チャンネル登録はこちら&#10;https://youtube.com/@..." style="width:100%;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+              <div style="font-size:11px;color:var(--text-sub);margin-top:4px;">ここに入力したテキストが概要欄の末尾に追加されます。.env の DESCRIPTION_FOOTER に設定したデフォルト文言の後に結合されます。</div>
             </div>
           </div>
         </div>
@@ -1382,6 +1392,7 @@ async function startJob() {
     privacy: state.privacy,
     schedule_at: scheduleAt,
     schedule_interval: +document.getElementById('schedule-interval').value,
+    description_footer: document.getElementById('description-footer').value.trim(),
   };
 
   const btn = document.getElementById('start-btn');
@@ -1837,6 +1848,7 @@ async function startBatchJob() {
     schedule_date: scheduleDate,
     posts_per_day: batchState.postsPerDay,
     time_slots: timeSlots,
+    description_footer: document.getElementById('batch-description-footer').value.trim(),
   };
 
   const btn = document.getElementById('batch-start-btn');
@@ -1986,9 +1998,16 @@ async function checkAuthStatus() {
   try {
     const res = await fetch('/api/youtube/token-status');
     const data = await res.json();
-    const label = data.authenticated
-      ? '認証済み — 別チャンネルに切り替える場合は再認証'
-      : '未認証 — アップロード時に自動でログイン画面が開きます';
+    let label;
+    if (data.status === 'valid') {
+      label = '認証済み（有効）';
+    } else if (data.status === 'expired') {
+      label = '期限切れ — 「再認証」で自動更新できます';
+    } else if (data.status === 'missing') {
+      label = '未設定 — youtube_token.pickle をサーバーに配置してください';
+    } else {
+      label = data.message || '状態不明';
+    }
     ['auth-status-label', 'batch-auth-status-label'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = label;
@@ -2040,13 +2059,35 @@ async function updateYtdlp() {
 }
 
 async function reauth() {
-  if (!confirm('YouTube認証をリセットします。\n次のアップロード時にGoogleアカウント選択画面が開きます。\nよろしいですか？')) return;
   const btn = document.getElementById('reauth-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '確認中...'; }
   try {
-    const res = await fetch('/api/youtube/token', { method: 'DELETE' });
-    const data = await res.json();
-    alert(data.message);
+    // まずトークン状態を確認
+    const statusRes = await fetch('/api/youtube/token-status');
+    const statusData = await statusRes.json();
+
+    if (statusData.status === 'expired') {
+      // 期限切れ → サーバー側でリフレッシュ
+      if (btn) btn.textContent = '更新中...';
+      const res = await fetch('/api/youtube/refresh-token', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert('トークンを自動更新しました。アップロードを再試行してください。');
+      } else {
+        alert('自動更新失敗: ' + (data.detail || data.message));
+      }
+    } else if (statusData.status === 'valid') {
+      alert('トークンは有効です。\nアップロードが失敗する場合は「youtube_token.pickle を置き直す」手順を試してください。');
+    } else {
+      // missing / invalid → 案内のみ
+      alert(
+        'YouTubeトークンが無効または見つかりません。\n\n' +
+        '【対処手順】\n' +
+        '1. ローカルPCで python generate_token.py を実行\n' +
+        '2. 生成された youtube_token.pickle をサーバーの /opt/kirinuki/ に配置\n' +
+        '3. このページを再読み込みしてください'
+      );
+    }
     await checkAuthStatus();
   } catch (e) {
     alert('エラーが発生しました: ' + e.message);

@@ -84,6 +84,10 @@ class JobCreateRequest(BaseModel):
     privacy: str = "private"
     schedule_at: Optional[str] = None
     schedule_interval: int = 24
+    description_footer: str = ""          # 概要欄フッター（空=デフォルトのみ）
+    thumbnail_mode: str = "auto"
+    font_size: int = 54
+    font_bold: bool = True
 
 
 # ── API エンドポイント ────────────────────────────────────────────────
@@ -277,6 +281,7 @@ class BatchJobCreateRequest(BaseModel):
     schedule_date: Optional[str] = None       # 投稿開始日 YYYY-MM-DD
     posts_per_day: int = 1                    # 1日あたりの投稿本数
     time_slots: Optional[list[str]] = None    # ["10:00","12:00",...] 各スロットの時刻
+    description_footer: str = ""              # 概要欄フッター（空=デフォルトのみ）
 
 
 @app.post("/api/batch-jobs")
@@ -370,9 +375,55 @@ async def delete_youtube_token():
 
 @app.get("/api/youtube/token-status")
 async def get_youtube_token_status():
-    """YouTube認証済みかどうかを返す"""
-    token_path = Path(os.environ.get("YOUTUBE_TOKEN_FILE", "youtube_token.pickle"))
-    return {"authenticated": token_path.exists()}
+    """YouTube認証トークンの状態を詳しく返す"""
+    import pickle
+    from src.uploader import _default_token_path
+    token_path = Path(_default_token_path())
+    if not token_path.exists():
+        return {"authenticated": False, "status": "missing", "message": "トークンファイルなし"}
+    try:
+        import stat as _stat
+        try:
+            os.chmod(str(token_path), 0o644)
+        except Exception:
+            pass
+        with open(str(token_path), "rb") as f:
+            creds = pickle.load(f)
+        if creds and creds.valid:
+            return {"authenticated": True, "status": "valid", "message": "認証済み・有効"}
+        if creds and creds.expired and creds.refresh_token:
+            return {"authenticated": True, "status": "expired", "message": "期限切れ（自動更新可能）"}
+        return {"authenticated": False, "status": "invalid", "message": "トークンが無効です。再生成が必要です"}
+    except Exception as e:
+        return {"authenticated": False, "status": "error", "message": f"読み込みエラー: {e}"}
+
+
+@app.post("/api/youtube/refresh-token")
+async def refresh_youtube_token():
+    """期限切れトークンをリフレッシュする（refresh_token がある場合のみ）"""
+    import pickle
+    from google.auth.transport.requests import Request
+    from src.uploader import _default_token_path
+    token_path = Path(_default_token_path())
+    if not token_path.exists():
+        raise HTTPException(404, "トークンファイルが見つかりません。ローカルPCで generate_token.py を実行してください。")
+    try:
+        os.chmod(str(token_path), 0o644)
+        with open(str(token_path), "rb") as f:
+            creds = pickle.load(f)
+        if creds and creds.valid:
+            return {"message": "トークンは既に有効です"}
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(str(token_path), "wb") as f:
+                pickle.dump(creds, f)
+            os.chmod(str(token_path), 0o644)
+            return {"message": "トークンを更新しました"}
+        raise HTTPException(400, "refresh_token がありません。ローカルPCで generate_token.py を再実行して pickle ファイルを置き直してください。")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"リフレッシュ失敗: {e}")
 
 
 @app.post("/api/cookies/upload")

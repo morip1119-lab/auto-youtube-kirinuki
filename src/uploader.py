@@ -104,14 +104,23 @@ class YouTubeUploader:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 console.print("[cyan]認証トークンを更新中...[/cyan]")
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except Exception as e:
+                    raise RuntimeError(
+                        f"YouTube認証トークンのリフレッシュに失敗しました: {e}\n"
+                        "ローカルPC で python generate_token.py を実行し、"
+                        "生成された youtube_token.pickle を /opt/kirinuki/ に配置してから"
+                        "「再認証」ボタンを押してください。"
+                    ) from e
             else:
-                console.print("[cyan]YouTube OAuth2認証を開始します...[/cyan]")
-                console.print("  ブラウザが開くので、Googleアカウントでログインしてください。")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.client_secrets_file, SCOPES
+                # ブラウザが使えないサーバー環境では新規OAuth不可 → 明示的にエラー
+                raise RuntimeError(
+                    "YouTube認証トークン (youtube_token.pickle) が見つからないか無効です。\n"
+                    "ローカルPC で python generate_token.py を実行し、"
+                    "生成された youtube_token.pickle を /opt/kirinuki/ に配置してから"
+                    "WebUIの「再認証」ボタンを押してください。"
                 )
-                creds = flow.run_local_server(port=0)
 
             with open(self.token_file, "wb") as f:
                 pickle.dump(creds, f)

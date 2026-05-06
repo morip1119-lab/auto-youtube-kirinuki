@@ -49,6 +49,10 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
     schedule_date = settings.get("schedule_date") or None
     posts_per_day = int(settings.get("posts_per_day", 1))
     time_slots: list = settings.get("time_slots") or None
+    # 概要欄フッター: env のデフォルト + UI入力を結合
+    env_footer = os.environ.get("DESCRIPTION_FOOTER", "").strip()
+    ui_footer = (settings.get("description_footer") or "").strip()
+    description_footer = "\n\n".join(filter(None, [env_footer, ui_footer]))
 
     print(f"[Schedule] schedule_date={schedule_date}, posts_per_day={posts_per_day}, time_slots={time_slots}, privacy={settings.get('privacy')}")
 
@@ -236,10 +240,20 @@ async def run_batch_pipeline(batch_job: BatchJob) -> None:
                         message=f"[{vi+1}/{total}] YouTubeにアップロード中...",
                     )
                     from src.uploader import YouTubeUploader
-                    uploader = YouTubeUploader(
-                        client_secrets_file=client_secrets,
-                        default_privacy=privacy,
-                    )
+                    try:
+                        uploader = YouTubeUploader(
+                            client_secrets_file=client_secrets,
+                            default_privacy=privacy,
+                            description_footer=description_footer,
+                        )
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, uploader.authenticate)
+                    except RuntimeError as auth_err:
+                        await job_manager.update_batch(
+                            batch_job,
+                            message=f"[{vi+1}/{total}] YouTube認証エラー: {auth_err}",
+                        )
+                        continue
                     for i, (clip_result, meta) in enumerate(zip(clip_results, metadata_list)):
                         if not clip_result.success:
                             continue
