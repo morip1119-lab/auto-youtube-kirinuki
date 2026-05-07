@@ -426,6 +426,23 @@ async def refresh_youtube_token():
         raise HTTPException(500, f"リフレッシュ失敗: {e}")
 
 
+@app.post("/api/youtube/upload-token")
+async def upload_youtube_token(file: UploadFile = File(...)):
+    """youtube_token.pickle をWebUI経由でアップロード（scp不要）"""
+    from src.uploader import _default_token_path
+    token_path = Path("/opt/kirinuki/youtube_token.pickle")
+    if not token_path.parent.exists():
+        token_path = Path(_default_token_path())
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    token_path.write_bytes(content)
+    try:
+        os.chmod(str(token_path), 0o644)
+    except Exception:
+        pass
+    return {"message": f"トークンを保存しました: {token_path}", "path": str(token_path)}
+
+
 @app.post("/api/cookies/upload")
 async def upload_cookies(file: UploadFile = File(...)):
     """cookies.txt をアップロードして YOUTUBE_COOKIES_FILE に保存し .env にも書き込む"""

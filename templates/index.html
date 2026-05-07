@@ -690,7 +690,11 @@
             <div>YouTubeアカウント</div>
             <div class="sub" id="auth-status-label">認証状態を確認中...</div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="reauth()" id="reauth-btn">再認証</button>
+          <div style="display:flex;gap:6px;">
+            <input type="file" id="token-file-input" accept=".pickle" style="display:none" onchange="uploadTokenFile(this)">
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('token-file-input').click()">token更新</button>
+            <button class="btn btn-outline btn-sm" onclick="reauth()" id="reauth-btn">再認証</button>
+          </div>
         </div>
         <div class="toggle-row" style="margin-bottom:14px;">
           <div>
@@ -953,7 +957,11 @@
               <div>YouTubeアカウント</div>
               <div class="sub" id="batch-auth-status-label">認証状態を確認中...</div>
             </div>
-            <button class="btn btn-outline btn-sm" onclick="reauth()">再認証</button>
+            <div style="display:flex;gap:6px;">
+              <input type="file" id="batch-token-file-input" accept=".pickle" style="display:none" onchange="uploadTokenFile(this)">
+              <button class="btn btn-outline btn-sm" onclick="document.getElementById('batch-token-file-input').click()">token更新</button>
+              <button class="btn btn-outline btn-sm" onclick="reauth()">再認証</button>
+            </div>
           </div>
           <div class="toggle-row" style="margin-bottom:14px;">
             <div>
@@ -2013,6 +2021,26 @@ async function checkAuthStatus() {
       if (el) el.textContent = label;
     });
   } catch (_) {}
+}
+
+async function uploadTokenFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/youtube/upload-token', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      alert('youtube_token.pickle を保存しました。\n「再認証」ボタンで状態を確認してください。');
+      await checkAuthStatus();
+    } else {
+      alert('エラー: ' + (data.detail || JSON.stringify(data)));
+    }
+  } catch (e) {
+    alert('アップロードエラー: ' + e.message);
+  }
+  input.value = '';
 }
 
 async function uploadCookieFile(input) {
