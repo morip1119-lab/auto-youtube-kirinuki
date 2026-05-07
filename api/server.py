@@ -440,6 +440,13 @@ async def upload_youtube_token(file: UploadFile = File(...)):
         os.chmod(str(token_path), 0o644)
     except Exception:
         pass
+    # サービスユーザー（kirinuki）が読めるよう chown も試みる
+    try:
+        import subprocess, pwd
+        svc_user = "kirinuki"
+        subprocess.run(["chown", f"{svc_user}:{svc_user}", str(token_path)], check=False, capture_output=True)
+    except Exception:
+        pass
     return {"message": f"トークンを保存しました: {token_path}", "path": str(token_path)}
 
 

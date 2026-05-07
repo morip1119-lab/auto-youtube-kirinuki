@@ -93,9 +93,22 @@ class YouTubeUploader:
         self.token_file = self.token_file or _default_token_path()
         if os.path.exists(self.token_file):
             # パーミッションエラーを防ぐため読み取り権限を強制付与
+            # os.chmod が権限不足で失敗する場合は sudo chmod を試みる
             try:
-                import stat
                 os.chmod(self.token_file, 0o644)
+            except PermissionError:
+                try:
+                    import subprocess
+                    subprocess.run(
+                        ["sudo", "chmod", "644", self.token_file],
+                        check=False, capture_output=True
+                    )
+                    subprocess.run(
+                        ["sudo", "chown", f"{os.environ.get('USER', 'kirinuki')}:", self.token_file],
+                        check=False, capture_output=True
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
             with open(self.token_file, "rb") as f:
