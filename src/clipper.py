@@ -49,13 +49,42 @@ def _get_font_path(bold: bool = True) -> str:
 
 def _download_thumbnail(url: str, dest: Path) -> bool:
     """サムネイル URL を dest にダウンロードする。成功したら True。"""
+    if not url:
+        return False
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            dest.write_bytes(resp.read())
+            data = resp.read()
+        # webp の場合は Pillow で JPEG 変換を試みる
+        if url.endswith(".webp") or b"WEBP" in data[:20]:
+            try:
+                from PIL import Image
+                import io
+                img = Image.open(io.BytesIO(data)).convert("RGB")
+                img.save(str(dest), "JPEG", quality=90)
+                return dest.stat().st_size > 1000
+            except Exception:
+                pass  # Pillow なければそのまま保存して試みる
+        dest.write_bytes(data)
         return dest.stat().st_size > 1000
     except Exception:
         return False
+
+
+def _best_thumbnail_url(video_id: str, fallback_url: str = "") -> str:
+    """video_id から最高品質の JPG サムネイル URL を返す。取得できなければ fallback_url。"""
+    if not video_id:
+        return fallback_url
+    for quality in ("maxresdefault", "sddefault", "hqdefault"):
+        url = f"https://i.ytimg.com/vi/{video_id}/{quality}.jpg"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}, method="HEAD")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    return url
+        except Exception:
+            continue
+    return fallback_url
 
 
 @dataclass
@@ -92,6 +121,7 @@ class VideoCutter:
         thumbnail_mode: str = "auto",  # "auto" / "none" / "custom"
         custom_thumbnail_path: Optional[str] = None,
         source_thumbnail_url: str = "",   # auto 時に使う YouTube サムネイル URL
+        source_video_id: str = "",        # auto 時に使う YouTube video_id（より確実）
         font_size: int = 54,
         font_bold: bool = True,
     ):
@@ -109,7 +139,12 @@ class VideoCutter:
         self.show_title = show_title
         self.thumbnail_mode = thumbnail_mode
         self.custom_thumbnail_path = Path(custom_thumbnail_path) if custom_thumbnail_path else None
-        self.source_thumbnail_url = source_thumbnail_url
+        self.source_video_id = source_video_id
+        # video_id がある場合は確実な JPG URL を優先して上書き
+        self.source_thumbnail_url = (
+            _best_thumbnail_url(source_video_id, source_thumbnail_url)
+            if source_video_id else source_thumbnail_url
+        )
         self.font_size = font_size
         self.font_bold = font_bold
 

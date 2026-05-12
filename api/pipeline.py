@@ -172,6 +172,7 @@ async def run_pipeline(job: Job) -> None:
             show_title=show_title,
             thumbnail_mode=thumbnail_mode,
             source_thumbnail_url=video_info.thumbnail_url or "",
+            source_video_id=video_info.video_id or "",
             font_size=font_size,
             font_bold=font_bold,
         )
